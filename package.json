@@ -1,0 +1,48 @@
+{
+  "name": "galacius",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "engines": {
+    "node": "26"
+  },
+  "packageManager": "pnpm@11.10.0",
+  "scripts": {
+    "dev": "pnpm build:ds && pnpm build:core:fe && go tool wails dev",
+    "build:ds": "pnpm --filter @galacius/design-system run build",
+    "build:report:fe": "pnpm --filter galacius-frontend --filter @galacius/design-system run build:report",
+    "build:app": "bash scripts/build.sh",
+    "build:app:fe": "pnpm build:ds && pnpm build:core:fe && pnpm --filter galacius-frontend run build",
+    "build:core:be": "go build -C packages/core ./...",
+    "build:core:fe": "pnpm --filter @galacius/core run build && pnpm generate:vendor",
+    "build:core": "pnpm build:core:be && pnpm build:core:fe",
+    "generate:vendor": "node frontend/scripts/generate-vendor-shims.mjs",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,css,md,yml}\"",
+    "lint:fe": "eslint frontend/src packages/design-system/src packages/core/frontend/src",
+    "lint:be": "go vet ./internal/... && go tool staticcheck ./internal/... && go vet -C packages/core ./... && go tool -C packages/core staticcheck ./...",
+    "test:ds": "pnpm --filter @galacius/design-system run test",
+    "test:ds:coverage": "pnpm --filter @galacius/design-system run test:coverage",
+    "test:fe": "pnpm --filter galacius-frontend run test",
+    "test:fe:coverage": "pnpm --filter galacius-frontend run test:coverage",
+    "test:be": " go test -race -v ./internal/...",
+    "test:be:coverage": "go test -race -v -cover -coverprofile=coverage.out ./internal/...",
+    "prepare": "husky",
+    "upgrade:all:fe": "ncu -u -t minor --dep prod,dev,optional --workspaces --root && pnpm install",
+    "upgrade:all:be": "go get -u -t ./... && go mod tidy && go get -C packages/core -u -t ./... && go mod tidy -C packages/core",
+    "upgrade:all": "pnpm upgrade:all:fe && pnpm upgrade:all:be"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.5.0",
+    "eslint": "^10.10.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.6",
+    "globals": "^17.12.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.4.0",
+    "npm-check-updates": "^23.1.0",
+    "prettier": "^3.9.6",
+    "prettier-plugin-tailwindcss": "^0.8.1",
+    "typescript-eslint": "^8.70.0"
+  }
+}

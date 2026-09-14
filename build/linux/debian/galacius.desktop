@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Exec=/usr/bin/galacius
+Name=Galacius
+Icon=galacius
+Categories=Utility;Development;System;
+Comment=Desktop Kubernetes dashboard

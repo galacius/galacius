@@ -1,0 +1,63 @@
+name: Build Check
+
+on:
+  workflow_call:
+    inputs:
+      RUNNER:
+        type: string
+        required: false
+        default: ubuntu-latest
+
+jobs:
+  app:
+    runs-on: ${{ inputs.RUNNER }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Setup Go from go.mod
+        uses: ./.github/actions/setup-go
+
+      - name: Setup Node.js + pnpm
+        uses: ./.github/actions/setup-node-pnpm
+        with:
+          ignore-scripts: "false"
+
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
+
+      - name: Build frontend bundles
+        uses: ./.github/actions/build-frontend-bundles
+
+      - name: Build
+        shell: bash
+        run: >
+          pnpm build:app --
+          ${{ runner.os == 'Linux' && '-tags webkit2_41' || '' }}
+
+  core:
+    runs-on: ${{ inputs.RUNNER }}
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Setup Go from packages/core/go.mod
+        uses: ./.github/actions/setup-go
+        with:
+          go-version-file: packages/core/go.mod
+
+      - name: Setup Node.js + pnpm
+        uses: ./.github/actions/setup-node-pnpm
+        with:
+          ignore-scripts: "false"
+
+      - name: Build design-system
+        run: pnpm build:ds
+
+      - name: Build packages/core (Go + frontend, incl. plugin vendor shims)
+        run: pnpm build:core

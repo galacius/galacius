@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package pluginapi;
+
+option go_package = "github.com/galacius/galacius/packages/core/pb";
+
+service Plugin {
+  // Subscribe returns a stream of pub/sub messages for a given topic.
+  rpc Subscribe(SubscribeRequest) returns (stream PubSubMessage);
+
+  // Publish publishes a message to a topic. Only the host and plugins publishing
+  // to their own topic prefix (plugins.<pluginID>.*) may call this.
+  rpc Publish(PublishRequest) returns (Empty);
+}
+
+message Empty {}
+
+// SubscribeRequest is used to subscribe to messages on a topic.
+message SubscribeRequest {
+  string topic = 1;
+}
+
+// PublishRequest is used to publish a message to a topic.
+message PublishRequest {
+  string topic = 1;
+  string payload_json = 2;
+}
+
+// PubSubMessage is a message published to a topic.
+message PubSubMessage {
+  string topic = 1;
+  string source = 2;       // host or pluginID
+  string timestamp = 3;    // RFC3339 formatted
+  string payload_json = 4;
+}
+

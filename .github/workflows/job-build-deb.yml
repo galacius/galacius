@@ -1,0 +1,159 @@
+name: Build .deb Package
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        required: false
+        default: "dev"
+      codename:
+        type: string
+        required: true
+      libwebkit_version:
+        type: string
+        required: true
+
+env:
+  DEBIAN_DIR: build/linux/debian
+
+jobs:
+  build-deb:
+    permissions:
+      contents: write
+      actions: write
+    runs-on: ubuntu-latest
+    env:
+      artifact: galacius-linux-amd64-${{ inputs.codename }}.deb
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Setup Go from go.mod
+        uses: ./.github/actions/setup-go
+
+      - name: Setup Node.js + pnpm
+        uses: ./.github/actions/setup-node-pnpm
+        with:
+          ignore-scripts: "false"
+
+      - name: Install Linux system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev desktop-file-utils
+
+      - name: Build frontend bundles
+        uses: ./.github/actions/build-frontend-bundles
+
+      - name: Build
+        shell: bash
+        run: >
+          pnpm build:app --
+          -platform linux/amd64
+          -tags webkit2_41
+          -ldflags "-s -w -X main.Version=${{ inputs.version }}"
+
+      - name: Package (Linux .deb)
+        run: |
+          set -euo pipefail
+
+          # Create debian package structure
+          mkdir -p "$DEBIAN_DIR/DEBIAN" "$DEBIAN_DIR/usr/bin" "$DEBIAN_DIR/usr/share/applications" "$DEBIAN_DIR/usr/share/icons/hicolor/256x256/apps"
+
+          # Copy control file and substitute version and libwebkit package.
+          # dpkg's Version field must start with a digit — strip the leading
+          # "v" from the release tag (e.g. v1.4.1 -> 1.4.1). Append a
+          # codename suffix (e.g. ~noble) so the three per-codename builds
+          # don't collide in the APT repo's shared pool: reprepro rejects
+          # re-including "galacius_<version>_amd64.deb" under a different
+          # codename once the same Package+Version+Architecture has already
+          # been pooled with different bytes (they differ by Depends only,
+          # since each build pins a different libwebkit package).
+          DEB_VERSION="${{ inputs.version }}"
+          DEB_VERSION="${DEB_VERSION#v}~${{ inputs.codename }}"
+
+          cp "$DEBIAN_DIR/DEBIAN/control" "$DEBIAN_DIR/DEBIAN/control.tmp"
+          sed -e "s/0\.0\.0/${DEB_VERSION}/g" \
+              -e "s/\${LIBWEBKIT_PKG}/${{ inputs.libwebkit_version }}/g" \
+              "$DEBIAN_DIR/DEBIAN/control.tmp" > "$DEBIAN_DIR/DEBIAN/control"
+          rm "$DEBIAN_DIR/DEBIAN/control.tmp"
+
+          # postinst/postrm already live at $DEBIAN_DIR/DEBIAN/ in the scaffold
+          chmod 755 "$DEBIAN_DIR/DEBIAN/postinst" "$DEBIAN_DIR/DEBIAN/postrm"
+
+          # Copy binary
+          cp build/bin/galacius "$DEBIAN_DIR/usr/bin/galacius"
+          chmod 755 "$DEBIAN_DIR/usr/bin/galacius"
+
+          # Copy icon and desktop file
+          cp build/appicon.png "$DEBIAN_DIR/usr/share/icons/hicolor/256x256/apps/galacius.png"
+          cp "$DEBIAN_DIR/galacius.desktop" "$DEBIAN_DIR/usr/share/applications/galacius.desktop"
+
+          # Remove the source .desktop template from the packaging root —
+          # dpkg-deb packages everything under $DEBIAN_DIR (except
+          # $DEBIAN_DIR/DEBIAN/) as the payload, so leaving it here
+          # would install it to /galacius.desktop.
+          rm -f "$DEBIAN_DIR/galacius.desktop"
+
+          # Build the .deb package
+          dpkg-deb --build "$DEBIAN_DIR" build/bin/${{ env.artifact }}
+
+      - name: Validate .deb package (lintian)
+        run: |
+          set +e
+          lintian --display-info build/bin/${{ env.artifact }} || true
+
+      - name: Validate .desktop file
+        run: desktop-file-validate "$DEBIAN_DIR/usr/share/applications/galacius.desktop"
+
+      - name: Cache apt archives for smoke test
+        if: ${{ vars.SKIP_DEB_SMOKE_TEST != 'true' }}
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: .apt-cache-${{ inputs.codename }}
+          key: apt-cache-${{ inputs.codename }}-${{ hashFiles(format('{0}/DEBIAN/control', env.DEBIAN_DIR)) }}
+
+      - name: Smoke test .deb (container)
+        # Set the SKIP_DEB_SMOKE_TEST repository/org variable to "true" to
+        # skip this step — the container pull + apt install can sometimes
+        # take a long time to finish.
+        if: ${{ vars.SKIP_DEB_SMOKE_TEST != 'true' }}
+        run: |
+          set -euo pipefail
+          mkdir -p .apt-cache-${{ inputs.codename }}
+          docker run --rm \
+            -v ${{ github.workspace }}/build/bin:/artifacts \
+            -v ${{ github.workspace }}/.apt-cache-${{ inputs.codename }}:/var/cache/apt/archives \
+            ubuntu:${{ inputs.codename }} bash -c "
+            apt-get update
+            apt-get install -y --no-install-recommends /artifacts/${{ env.artifact }}
+            galacius --version
+            test -f /usr/share/applications/galacius.desktop
+          "
+
+      - name: Compute SHA256 checksum
+        shell: bash
+        run: |
+          cd build/bin
+          shasum -a 256 "${{ env.artifact }}" | awk '{print $1}' > "${{ env.artifact }}.sha256"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ env.artifact }}
+          path: |
+            build/bin/${{ env.artifact }}
+            build/bin/${{ env.artifact }}.sha256
+          retention-days: 1
+
+      - name: Upload checksum artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: checksum-${{ env.artifact }}
+          path: build/bin/${{ env.artifact }}.sha256
+          retention-days: 1
+
+      - name: Upload to release
+        if: ${{ inputs.version != 'dev' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ inputs.version }}" build/bin/${{ env.artifact }} --repo "${{ github.repository }}" --clobber

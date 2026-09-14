@@ -1,0 +1,173 @@
+name: Github Release
+
+on:
+  workflow_call:
+    inputs:
+      RUNNER:
+        type: string
+        required: false
+        default: ubuntu-latest
+    outputs:
+      tag_name:
+        description: "The semver tag that was created"
+        value: ${{ jobs.run.outputs.tag_name }}
+
+env:
+  MAJOR_LABEL: "semver:major"
+  MINOR_LABEL: "semver:minor"
+  PATCH_LABEL: "semver:patch"
+
+jobs:
+  run:
+    runs-on: ${{ inputs.RUNNER }}
+    if: github.event.pull_request.merged == true || github.event_name != 'pull_request'
+    permissions:
+      contents: write
+      pull-requests: read
+    outputs:
+      tag_name: ${{ steps.create-release.outputs.tag_name }}
+
+    steps:
+      - name: Create semver release
+        id: create-release
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        with:
+          script: |
+            // Determine bump type from the PR label on the merge commit
+            let bump = 'patch';
+
+            // Parse PR number from the commit message first.
+            // listPullRequestsAssociatedWithCommit only covers commits *inside* a PR branch,
+            // not the merge commit itself — so it returns 0 results for standard merge commits.
+            // GitHub merge commit messages reliably contain the PR number:
+            //   regular merge: "Merge pull request #NNN from ..."
+            //   squash merge:  "Some title (#NNN)"
+            core.info(`Fetching commit message for: ${context.sha}`);
+            const { data: commitData } = await github.rest.repos.getCommit({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: context.sha
+            });
+            const commitMessage = commitData.commit.message;
+            core.info(`Commit message: ${commitMessage.split('\n')[0]}`);
+
+            const mergeMatch = commitMessage.match(/Merge pull request #(\d+)/);
+            const squashMatch = commitMessage.match(/\(#(\d+)\)\s*$/m);
+            const prNumber = mergeMatch ? parseInt(mergeMatch[1], 10)
+                           : squashMatch ? parseInt(squashMatch[1], 10)
+                           : null;
+
+            let mergedPr = null;
+            if (prNumber) {
+              core.info(`Found PR #${prNumber} from commit message`);
+              const { data: pr } = await github.rest.pulls.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: prNumber
+              });
+              mergedPr = pr;
+            } else {
+              // Fallback: try the association API (works for squash/rebase where the
+              // branch tip commit is preserved as-is in the target branch)
+              core.info(`No PR number in commit message — falling back to listPullRequestsAssociatedWithCommit`);
+              const { data: prs } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                commit_sha: context.sha
+              });
+              core.info(`Found ${prs.length} associated PR(s): ${prs.map(p => `#${p.number} (${p.state})`).join(', ') || 'none'}`);
+              mergedPr = prs.find(pr => pr.merged_at !== null) ?? prs[0] ?? null;
+            }
+
+            if (mergedPr) {
+              const labels = mergedPr.labels.map(l => l.name.toLowerCase());
+              core.info(`PR #${mergedPr.number} labels: ${labels.join(', ')}`);
+              if (labels.includes('${{ env.MAJOR_LABEL }}')) {
+                bump = 'major';
+              } else if (labels.includes('${{ env.MINOR_LABEL }}')) {
+                bump = 'minor';
+              } else {
+                bump = 'patch';
+              }
+            } else {
+              core.warning('No merged PR found for this commit — defaulting to patch bump');
+            }
+
+            // Retry loop to handle race conditions where concurrent PRs compute the same next version.
+            // On each attempt we re-fetch the latest release so the version is always based on
+            // the real current state of the repo.
+            const MAX_ATTEMPTS = 5;
+            for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+              let latestTag = 'v0.0.0';
+              try {
+                const { data: latest } = await github.rest.repos.getLatestRelease({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo
+                });
+                latestTag = latest.tag_name;
+              } catch (e) {
+                core.info('No existing releases found, starting from v0.0.0');
+              }
+
+              const [major, minor, patch] = latestTag.replace('v', '').split('.').map(Number);
+              let next;
+              switch (bump) {
+                case 'major': next = `v${major + 1}.0.0`; break;
+                case 'minor': next = `v${major}.${minor + 1}.0`; break;
+                default: next = `v${major}.${minor}.${patch + 1}`;
+              }
+
+              core.info(`Attempt ${attempt}/${MAX_ATTEMPTS}: creating tag and release ${next} (${bump} bump from ${latestTag})`);
+
+              // Create an annotated tag object + ref explicitly.
+              // createRelease would otherwise create only a lightweight tag as a side effect.
+              try {
+                const { data: tagObj } = await github.rest.git.createTag({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  tag: next,
+                  message: `Release ${next}`,
+                  object: context.sha,
+                  type: 'commit'
+                });
+                await github.rest.git.createRef({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  ref: `refs/tags/${next}`,
+                  sha: tagObj.sha
+                });
+                core.info(`Created annotated tag ${next} → ${context.sha}`);
+              } catch (tagErr) {
+                if (tagErr.status === 422) {
+                  core.info(`Tag ${next} already exists, proceeding with release`);
+                } else {
+                  throw tagErr;
+                }
+              }
+
+              try {
+                await github.rest.repos.createRelease({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  tag_name: next,
+                  name: next,
+                  target_commitish: context.sha,
+                  generate_release_notes: true,
+                  draft: true
+                });
+                core.info(`Created draft release ${next} (${bump} bump from ${latestTag})`);
+                core.setOutput('tag_name', next);
+                break;
+              } catch (e) {
+                const alreadyExists = e.status === 422 &&
+                  JSON.stringify(e.response?.data?.errors ?? []).includes('already_exists');
+                if (alreadyExists && attempt < MAX_ATTEMPTS) {
+                  const msg = `Release ${next} already exists — concurrent release detected. ` +
+                    `Retrying in ${500 * attempt}ms (${attempt}/${MAX_ATTEMPTS})...`;
+                  core.warning(msg);
+                  await new Promise(r => setTimeout(r, 500 * attempt));
+                } else {
+                  throw e;
+                }
+              }
+            }

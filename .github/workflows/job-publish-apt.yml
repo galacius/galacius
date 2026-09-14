@@ -1,0 +1,150 @@
+name: Publish to APT
+
+on:
+  workflow_call:
+    inputs:
+      RUNNER:
+        type: string
+        required: false
+        default: ubuntu-latest
+      version:
+        type: string
+        required: true
+
+jobs:
+  publish-apt:
+    name: Publish to APT
+    runs-on: ${{ inputs.RUNNER }}
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout main repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Download checksum artifacts
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          pattern: checksum-galacius-linux-amd64-*.deb
+          path: checksums
+          merge-multiple: true
+
+      - name: Download and verify .deb release assets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION="${{ inputs.version }}"
+
+          mkdir -p debs
+          gh release download "$VERSION" \
+            --repo "${{ github.repository }}" \
+            --pattern "*.deb" \
+            --dir debs
+
+          shopt -s nullglob
+          debs=(debs/*.deb)
+          [[ ${#debs[@]} -gt 0 ]] || { echo "::error::no .deb assets found on release $VERSION"; exit 1; }
+
+          # Checksums are read from the checksum-* build artifacts (same source
+          # publish-manifest uses for the other artifact types) — .deb assets
+          # are deliberately excluded from manifest.json (see job-build.yml's
+          # publish-manifest job) and no .sha256 sidecar is uploaded as a raw
+          # release asset for any artifact type, .deb included.
+          for deb in "${debs[@]}"; do
+            name=$(basename "$deb")
+            sha_file="checksums/${name}.sha256"
+            [[ -f "$sha_file" ]] || { echo "::error::missing checksum artifact for $name"; exit 1; }
+            expected=$(tr -d '[:space:]' < "$sha_file")
+            computed=$(shasum -a 256 "$deb" | awk '{print $1}')
+            [[ "$computed" == "$expected" ]] || {
+              echo "::error::sha256 mismatch for $name — expected $expected, got $computed"
+              exit 1
+            }
+          done
+
+      - name: Checkout apt repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          repository: galacius/galacius-apt
+          token: ${{ secrets.APT_REPO_GITHUB_TOKEN }}
+          path: apt-repo
+
+      - name: Install reprepro
+        run: sudo apt-get update && sudo apt-get install -y reprepro
+
+      - name: Import GPG signing key
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          echo "$GPG_PRIVATE_KEY" | gpg --batch --import
+
+          mkdir -p ~/.gnupg
+          echo "allow-loopback-pinentry" >> ~/.gnupg/gpg-agent.conf
+          gpgconf --reload gpg-agent
+
+          # Real temp file, not process substitution — avoids a race between
+          # the FIFO and the gpg subprocess reprepro forks (decision #8).
+          PASSPHRASE_FILE=$(mktemp)
+          chmod 600 "$PASSPHRASE_FILE"
+          printf '%s' "$GPG_PASSPHRASE" > "$PASSPHRASE_FILE"
+          echo "passphrase_file=$PASSPHRASE_FILE" >> "$GITHUB_ENV"
+
+      - name: Export and safety-check public key
+        run: |
+          set -euo pipefail
+          mkdir -p apt-repo/keys
+          gpg --batch --yes --armor --export packages@galacius.io > apt-repo/keys/galacius-keyring.gpg
+
+          # This must grep the *exported public* key file, not the secret —
+          # the secret is expected to contain private key material.
+          if grep -q -- '-----BEGIN.*PRIVATE KEY-----' apt-repo/keys/galacius-keyring.gpg; then
+            echo "::error::exported 'public' key file contains private key material — aborting before commit"
+            exit 1
+          fi
+
+      - name: Include .deb packages into APT repository
+        working-directory: apt-repo
+        run: |
+          set -euo pipefail
+          trap 'rm -f "${{ env.passphrase_file }}"' EXIT
+
+          for deb in ../debs/*.deb; do
+            name=$(basename "$deb")
+            if [[ "$name" =~ ^galacius-linux-amd64-([a-z]+)\.deb$ ]]; then
+              codename="${BASH_REMATCH[1]}"
+            else
+              echo "::error::cannot parse codename from $name"
+              exit 1
+            fi
+
+            reprepro -Vb . includedeb "$codename" "$deb"
+          done
+
+      - name: Verify signed Release files
+        working-directory: apt-repo
+        run: |
+          set -euo pipefail
+          for codename in noble jammy focal; do
+            [[ -f "dists/$codename/Release" ]] || { echo "::error::missing dists/$codename/Release"; exit 1; }
+            [[ -f "dists/$codename/Release.gpg" ]] || { echo "::error::missing dists/$codename/Release.gpg"; exit 1; }
+          done
+
+      - name: Commit and push apt repository
+        working-directory: apt-repo
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # keys/, pool/, and dists/ are covered by this repo's own .gitignore
+          # (*.gpg, /pool/, /dists/) since those paths are normally build
+          # output — force-add the ones that are actually meant to be tracked.
+          git add -f keys/galacius-keyring.gpg pool dists
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: publish galacius ${{ inputs.version }} to apt repository"
+            git push origin HEAD
+          else
+            echo "No apt repository changes to publish."
+          fi
