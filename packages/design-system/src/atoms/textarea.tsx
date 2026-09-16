@@ -426,6 +426,7 @@ function Textarea({
         value={value}
         borderRounded={borderRounded}
         aria-label={ariaLabel}
+        onChange={onChange}
         {...props}
       />
     );

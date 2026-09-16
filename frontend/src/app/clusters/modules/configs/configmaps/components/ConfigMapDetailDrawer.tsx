@@ -346,7 +346,7 @@ const ConfigMapOverviewTab: FC<{ cm: ConfigMap }> = ({ cm }) => {
                     </Button>
                     <Button size="sm" type="submit" disabled={!hasChanges || isPending}>
                       {isPending && <Loader2Icon className="h-3.5 w-3.5 animate-spin" />}
-                      SaveIcon
+                      Save
                     </Button>
                   </div>
                 </div>
