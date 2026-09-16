@@ -1,0 +1,18 @@
+@layer utilities {
+  /* Transitions (150ms — Tailwind's default, declared explicitly) */
+  .transition-interactive {
+    @apply transition-all duration-150;
+  }
+  .transition-theme {
+    @apply transition-colors duration-150;
+  }
+  .transition-fade {
+    @apply transition-opacity duration-150;
+  }
+  .transition-focus {
+    @apply transition-[color,box-shadow] duration-150;
+  }
+  .transition-height {
+    @apply transition-[height] duration-150;
+  }
+}

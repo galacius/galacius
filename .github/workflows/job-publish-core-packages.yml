@@ -1,0 +1,129 @@
+name: Publish App Core Packages
+
+on:
+  workflow_call:
+    inputs:
+      RUNNER:
+        type: string
+        required: false
+        default: ubuntu-latest
+      version:
+        type: string
+        required: true
+
+jobs:
+  detect-core-be-changes:
+    name: Detect packages/core (Go) Changes
+    uses: ./.github/workflows/job-detect-changes.yml
+    with:
+      RUNNER: ${{ inputs.RUNNER }}
+      paths: |
+        packages/core/go.mod
+        packages/core/go.sum
+        packages/core/pb/**
+        packages/core/kube/**
+        packages/core/async/**
+        packages/core/util/**
+        .github/workflows/job-publish-core-packages.yml
+        .github/actions/setup-go/**
+
+  detect-core-fe-changes:
+    name: Detect packages/core (Frontend) Changes
+    uses: ./.github/workflows/job-detect-changes.yml
+    with:
+      RUNNER: ${{ inputs.RUNNER }}
+      paths: |
+        packages/core/frontend/**
+        pnpm-lock.yaml
+        package.json
+        pnpm-workspace.yaml
+        .github/workflows/job-publish-core-packages.yml
+        .github/actions/setup-node-pnpm/**
+
+  publish-be:
+    name: Publish packages/core (Go module tag)
+    needs: [detect-core-be-changes]
+    if: ${{ needs.detect-core-be-changes.outputs.changed == 'true' }}
+    runs-on: ${{ inputs.RUNNER }}
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Setup Go from packages/core/go.mod
+        uses: ./.github/actions/setup-go
+        with:
+          go-version-file: packages/core/go.mod
+
+      - name: Build and vet packages/core
+        run: |
+          go build -C packages/core ./...
+          go vet -C packages/core ./...
+
+      - name: Compute packages/core tag
+        id: tag
+        env:
+          VERSION: ${{ inputs.version }}
+        run: echo "tag=packages/core/${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Create and push packages/core tag
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        env:
+          CORE_TAG: ${{ steps.tag.outputs.tag }}
+        with:
+          script: |
+            const tag = process.env.CORE_TAG;
+
+            // Create an annotated tag object + ref explicitly, same pattern as
+            // job-release-semver.yml — createRelease alone would only create a
+            // lightweight tag as a side effect.
+            try {
+              const { data: tagObj } = await github.rest.git.createTag({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                tag,
+                message: `Release ${tag}`,
+                object: context.sha,
+                type: 'commit'
+              });
+              await github.rest.git.createRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: `refs/tags/${tag}`,
+                sha: tagObj.sha
+              });
+              core.info(`Created tag ${tag} -> ${context.sha}`);
+            } catch (err) {
+              if (err.status === 422) {
+                core.info(`Tag ${tag} already exists, skipping`);
+              } else {
+                throw err;
+              }
+            }
+
+  publish-fe:
+    name: Publish @galacius/core to NPM
+    needs: [detect-core-fe-changes]
+    if: ${{ needs.detect-core-fe-changes.outputs.changed == 'true' }}
+    runs-on: ${{ inputs.RUNNER }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Setup Node.js + pnpm
+        uses: ./.github/actions/setup-node-pnpm
+
+      - name: Set package version
+        run: pnpm -F @galacius/core exec npm version "${VERSION#v}" --no-git-tag-version --allow-same-version
+        env:
+          VERSION: ${{ inputs.version }}
+
+      - name: Build package
+        run: pnpm -F @galacius/core run build
+
+      - name: Publish to NPM
+        run: pnpm publish -F @galacius/core --no-git-checks

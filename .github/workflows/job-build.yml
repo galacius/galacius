@@ -1,0 +1,377 @@
+name: Build Desktop Application
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        required: false
+        default: "dev"
+    outputs:
+      windows_build_result:
+        description: "Result of the standalone Windows build job (success/failure/cancelled/skipped)"
+        value: ${{ jobs.build-windows.result }}
+      linux_build_result:
+        description: "Result of the standalone Linux (plain tarball) build job (success/failure/cancelled/skipped)"
+        value: ${{ jobs.build-linux.result }}
+      macos_build_result:
+        description: "Result of the standalone macOS build job (success/failure/cancelled/skipped)"
+        value: ${{ jobs.build-macos.result }}
+      deb_noble_result:
+        description: "Result of the noble .deb build job (success/failure/cancelled/skipped)"
+        value: ${{ jobs.build-deb-noble.result }}
+      deb_jammy_result:
+        description: "Result of the jammy .deb build job (success/failure/cancelled/skipped)"
+        value: ${{ jobs.build-deb-jammy.result }}
+      deb_focal_result:
+        description: "Result of the focal .deb build job (success/failure/cancelled/skipped)"
+        value: ${{ jobs.build-deb-focal.result }}
+      manifest_result:
+        description: "Result of the publish-manifest job (success/failure/cancelled/skipped)"
+        value: ${{ jobs.publish-manifest.result }}
+
+env:
+  DEBIAN_DIR: build/linux/debian
+
+jobs:
+  build-macos:
+    # Every platform gets its own standalone job (build-windows, build-linux,
+    # build-macos, build-deb-noble/jammy/focal) so each one's result can be
+    # surfaced independently via the outputs above — callers that only care
+    # about one platform's artifact (e.g. cd.yml's publish-homebrew/publish-apt jobs)
+    # shouldn't be blocked by another platform's build failure.
+    runs-on: macos-latest
+    permissions:
+      contents: write
+      actions: write
+    env:
+      artifact: galacius-darwin-arm64.zip
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Setup Go from go.mod
+        uses: ./.github/actions/setup-go
+
+      - name: Setup Node.js + pnpm
+        uses: ./.github/actions/setup-node-pnpm
+        with:
+          ignore-scripts: "false"
+
+      - name: Build frontend bundles
+        uses: ./.github/actions/build-frontend-bundles
+
+      - name: Build
+        shell: bash
+        run: >
+          pnpm build:app --
+          -platform darwin/arm64
+          -ldflags "-s -w -X main.Version=${{ inputs.version }}"
+
+      - name: Package (macOS)
+        run: cd build/bin && zip -r ${{ env.artifact }} galacius.app
+
+      - name: Compute SHA256 checksum
+        shell: bash
+        run: |
+          cd build/bin
+          shasum -a 256 "${{ env.artifact }}" | awk '{print $1}' > "${{ env.artifact }}.sha256"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ env.artifact }}
+          path: |
+            build/bin/${{ env.artifact }}
+            build/bin/${{ env.artifact }}.sha256
+          retention-days: 1
+
+      - name: Upload checksum artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: checksum-${{ env.artifact }}
+          path: build/bin/${{ env.artifact }}.sha256
+          retention-days: 1
+
+      - name: Upload to release
+        if: ${{ inputs.version != 'dev' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ inputs.version }}" build/bin/${{ env.artifact }} --repo "${{ github.repository }}" --clobber
+
+  build-deb-noble:
+    # One standalone job per codename (mirrors build-windows/build-linux/
+    # build-macos above) instead of a matrix, so each codename's result is
+    # visible independently as its own output — job-publish-apt.yml already
+    # tolerates a partial .deb set (it just includes whatever release assets
+    # exist and only errors if none do), so cd.yml's publish-apt job can run
+    # off "at least one codename succeeded" instead of requiring all three.
+    uses: ./.github/workflows/job-build-deb.yml
+    with:
+      version: ${{ inputs.version }}
+      codename: noble
+      libwebkit_version: libwebkit2gtk-4.1-0
+    secrets: inherit
+
+  build-deb-jammy:
+    uses: ./.github/workflows/job-build-deb.yml
+    with:
+      version: ${{ inputs.version }}
+      codename: jammy
+      libwebkit_version: libwebkit2gtk-4.0-37
+    secrets: inherit
+
+  build-deb-focal:
+    uses: ./.github/workflows/job-build-deb.yml
+    with:
+      version: ${{ inputs.version }}
+      codename: focal
+      libwebkit_version: libwebkit2gtk-4.0-37
+    secrets: inherit
+
+  build-windows:
+    # Standalone job (see build-macos above for rationale) so its result is
+    # surfaced independently via `windows_build_result` below.
+    runs-on: windows-latest
+    permissions:
+      contents: write
+      actions: write
+    env:
+      artifact: galacius-windows-amd64.exe
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Setup Go from go.mod
+        uses: ./.github/actions/setup-go
+
+      - name: Setup Node.js + pnpm
+        uses: ./.github/actions/setup-node-pnpm
+        with:
+          ignore-scripts: "false"
+
+      - name: Build frontend bundles
+        uses: ./.github/actions/build-frontend-bundles
+
+      - name: Build
+        shell: bash
+        run: >
+          pnpm build:app --
+          -platform windows/amd64
+          -ldflags "-s -w -X main.Version=${{ inputs.version }}"
+
+      - name: Rename binary
+        shell: bash
+        run: mv build/bin/galacius.exe build/bin/${{ env.artifact }}
+
+      - name: Compute SHA256 checksum
+        shell: pwsh
+        run: |
+          cd build/bin
+          $hash = Get-FileHash -Algorithm SHA256 "${{ env.artifact }}" | Select-Object -ExpandProperty Hash
+          $hash | Out-File -Encoding ascii "${{ env.artifact }}.sha256"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ env.artifact }}
+          path: |
+            build/bin/${{ env.artifact }}
+            build/bin/${{ env.artifact }}.sha256
+          retention-days: 1
+
+      - name: Upload checksum artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: checksum-${{ env.artifact }}
+          path: build/bin/${{ env.artifact }}.sha256
+          retention-days: 1
+
+      - name: Upload to release
+        if: ${{ inputs.version != 'dev' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ inputs.version }}" build/bin/${{ env.artifact }} --repo "${{ github.repository }}" --clobber
+
+  build-linux:
+    # Standalone job (see build-macos above for rationale) so its result is
+    # surfaced independently via `linux_build_result` below.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+    env:
+      artifact: galacius-linux-amd64.tar.gz
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Setup Go from go.mod
+        uses: ./.github/actions/setup-go
+
+      - name: Setup Node.js + pnpm
+        uses: ./.github/actions/setup-node-pnpm
+        with:
+          ignore-scripts: "false"
+
+      - name: Install Linux system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev desktop-file-utils
+
+      - name: Build frontend bundles
+        uses: ./.github/actions/build-frontend-bundles
+
+      - name: Build
+        shell: bash
+        run: >
+          pnpm build:app --
+          -platform linux/amd64
+          -tags webkit2_41
+          -ldflags "-s -w -X main.Version=${{ inputs.version }}"
+
+      - name: Package (Linux)
+        run: |
+          cp build/appicon.png build/bin/
+          cd build/bin && tar -czf ${{ env.artifact }} galacius galacius-install-helper appicon.png
+
+      - name: Compute SHA256 checksum
+        shell: bash
+        run: |
+          cd build/bin
+          shasum -a 256 "${{ env.artifact }}" | awk '{print $1}' > "${{ env.artifact }}.sha256"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ env.artifact }}
+          path: |
+            build/bin/${{ env.artifact }}
+            build/bin/${{ env.artifact }}.sha256
+          retention-days: 1
+
+      - name: Upload checksum artifact
+        # Only consumed by publish-manifest below (to populate manifest.json's
+        # sha256 field) — kept as a small dedicated artifact rather than
+        # re-downloading the full build artifact just to read the checksum.
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: checksum-${{ env.artifact }}
+          path: build/bin/${{ env.artifact }}.sha256
+          retention-days: 1
+
+      - name: Upload to release
+        if: ${{ inputs.version != 'dev' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ inputs.version }}" build/bin/${{ env.artifact }} --repo "${{ github.repository }}" --clobber
+
+  publish-manifest:
+    needs:
+      [build-windows, build-linux, build-macos, build-deb-noble, build-deb-jammy, build-deb-focal]
+    # Each build job can fail independently now. Run on any non-skipped
+    # outcome (success/failure/cancelled) from any of the six build jobs so
+    # the manifest still gets built from whatever assets actually made it
+    # onto the release; the manifest-build step below only reads assets that
+    # actually exist on the release, so a fully-empty set of builds just
+    # yields an empty (but harmless) manifest.
+    if: >-
+      ${{ always() && inputs.version != 'dev' && (
+        needs.build-windows.result != 'skipped' ||
+        needs.build-linux.result != 'skipped' ||
+        needs.build-macos.result != 'skipped' ||
+        needs.build-deb-noble.result != 'skipped' ||
+        needs.build-deb-jammy.result != 'skipped' ||
+        needs.build-deb-focal.result != 'skipped'
+      ) }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Download checksum artifacts
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          pattern: checksum-*
+          path: checksums
+          merge-multiple: true
+
+      - name: Build manifest.json from published release assets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${{ inputs.version }}"
+          REPO="${{ github.repository }}"
+
+          echo '{"version": "'"$TAG"'", "release_tag": "'"$TAG"'", "generated_at": "'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'", "artifacts": []}' > manifest.json
+
+          # The release is still in draft state at this point in the pipeline
+          # (finalize-release flips it to published later), and GitHub's
+          # "get release by tag" endpoint only returns published releases —
+          # so `gh release view`/`gh api releases/tags/<tag>` 404 on it.
+          # List all releases instead (which does include drafts) and filter
+          # by tag locally.
+          release=$(gh api "repos/${REPO}/releases" --paginate --jq ".[] | select(.tag_name == \"${TAG}\")")
+
+          # List all assets in the release (checksums are no longer published
+          # as release assets — they're read from the checksum-* build
+          # artifacts downloaded above instead).
+          assets=$(echo "$release" | jq -r '.assets[].name')
+
+          for artifact in $assets; do
+            # Skip .deb artifacts (excluded from manifest.json)
+            if [[ "$artifact" =~ \.deb$ ]]; then continue; fi
+
+            # Parse os/arch from filename: galacius-<os>-<arch>.<ext>
+            # Regex: ^galacius-([a-z0-9]+)-([a-z0-9]+)\.
+            if [[ $artifact =~ ^galacius-([a-z0-9]+)-([a-z0-9]+)\. ]]; then
+              os="${BASH_REMATCH[1]}"
+              arch="${BASH_REMATCH[2]}"
+            else
+              echo "::warning::skipping ${artifact}: does not match galacius-<os>-<arch>.<ext> pattern"
+              continue
+            fi
+
+            sha256=""
+            [[ -f "checksums/${artifact}.sha256" ]] && sha256=$(tr -d '[:space:]' < "checksums/${artifact}.sha256")
+            size=$(echo "$release" | jq --arg name "$artifact" '.assets[] | select(.name == $name) | .size')
+            if [[ -z "$sha256" || -z "$size" ]]; then
+              echo "::warning::skipping ${artifact}: could not fetch checksum or size"
+              continue
+            fi
+            manifest=$(jq --arg os "$os" --arg arch "$arch" --arg filename "$artifact" --arg sha256 "$sha256" --argjson size "$size" \
+              '.artifacts += [{"os": $os, "arch": $arch, "filename": $filename, "sha256": $sha256, "size": $size}]' manifest.json)
+            echo "$manifest" > manifest.json
+          done
+
+          cat manifest.json
+
+      - name: Upload manifest to release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ inputs.version }}" manifest.json --repo "${{ github.repository }}" --clobber
+
+  finalize-release:
+    needs:
+      [
+        build-windows,
+        build-linux,
+        build-macos,
+        build-deb-noble,
+        build-deb-jammy,
+        build-deb-focal,
+        publish-manifest,
+      ]
+    if: ${{ always() && inputs.version != 'dev' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Finalize release by flipping draft to published
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "${{ inputs.version }}" --repo "${{ github.repository }}" --draft=false

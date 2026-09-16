@@ -1,0 +1,246 @@
+name: Unit Tests
+
+on:
+  workflow_call:
+    inputs:
+      RUNNER:
+        type: string
+        required: false
+        default: ubuntu-latest
+      FE_COVERAGE_DIR:
+        type: string
+        required: false
+        default: frontend/coverage
+      DS_COVERAGE_DIR:
+        type: string
+        required: false
+        default: packages/design-system/coverage
+      BE_TARGET_PATH:
+        description: "Go packages to test (e.g. ./... or ./internal/...)"
+        type: string
+        required: false
+        default: "./internal/..."
+      BE_TEST_REPORT_FOLDER:
+        type: string
+        required: false
+        default: be-unit-test
+      BE_COVERAGE_IGNORE_FILE:
+        type: string
+        required: false
+        default: coverage.ignore
+
+jobs:
+  backend:
+    runs-on: ${{ inputs.RUNNER }}
+    permissions:
+      contents: read
+      pull-requests: write
+      actions: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Setup Go from go.mod
+        uses: ./.github/actions/setup-go
+
+      - name: Run tests
+        if: ${{ always() }}
+        run: go test -race -v -cover -coverprofile=coverage.out ${{ inputs.BE_TARGET_PATH }}
+
+      - name: Generate test reports
+        if: ${{ always() }}
+        run: |
+          mkdir ${{ inputs.BE_TEST_REPORT_FOLDER }}
+
+          COVERAGE_FILE=coverage.out
+          if [ -f "${{ inputs.BE_COVERAGE_IGNORE_FILE }}" ]; then
+            grep -v -f ${{ inputs.BE_COVERAGE_IGNORE_FILE }} coverage.out > coverage.filtered.out
+            COVERAGE_FILE=coverage.filtered.out
+          fi
+
+          go tool cover -func=$COVERAGE_FILE > ${{ inputs.BE_TEST_REPORT_FOLDER }}/coverage.txt
+          go tool cover -html=$COVERAGE_FILE -o ${{ inputs.BE_TEST_REPORT_FOLDER }}/coverage.html
+
+      - name: Convert coverage to Markdown table
+        id: be-test-summary
+        if: ${{ always() }}
+        run: |
+          TOTAL=$(grep -E '^total:' ${{ inputs.BE_TEST_REPORT_FOLDER }}/coverage.txt | awk '{print $3}')
+          echo "total=$TOTAL" >> $GITHUB_OUTPUT
+
+          {
+            echo "## BE Code Coverage Report"
+            echo ""
+            echo "**Total Coverage:** \`$TOTAL\`"
+            echo ""
+            echo "| File | Function | Coverage |"
+            echo "| :--- | :--- | ---: |"
+
+            MODULE=$(grep '^module ' go.mod | awk '{print $2}')
+            grep -v '^total:' ${{ inputs.BE_TEST_REPORT_FOLDER }}/coverage.txt | while IFS= read -r line; do
+              RAW_FILE=$(echo "$line" | awk '{print $1}')
+              FILE=$(echo "$RAW_FILE" | sed -E 's#:[0-9]+:$##' | sed "s#^${MODULE}/##")
+              FUNC=$(echo "$line" | awk '{print $2}')
+              COV=$(echo "$line" | awk '{print $3}')
+              echo "| \`$FILE\` | \`$FUNC\` | $COV |"
+            done
+          } > ${{ inputs.BE_TEST_REPORT_FOLDER }}/coverage.md
+
+      - name: Add coverage to job summary
+        if: ${{ always() }}
+        run: cat ${{ inputs.BE_TEST_REPORT_FOLDER }}/coverage.md >> $GITHUB_STEP_SUMMARY
+
+      - name: Attach coverage report to PR
+        uses: marocchino/sticky-pull-request-comment@0ea0beb66eb9baf113663a64ec522f60e49231c0 # v3.0.4
+        if: ${{ always() && github.event_name == 'pull_request' }}
+        with:
+          header: be-coverage-report
+          message: |
+            ### BE Coverage Report Summary
+
+            **Total Coverage:** ${{ steps.be-test-summary.outputs.total }}
+
+            [View full report](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+      - name: Archive coverage report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: report-${{ inputs.BE_TEST_REPORT_FOLDER }}
+          path: ${{ inputs.BE_TEST_REPORT_FOLDER }}
+          retention-days: 1
+          include-hidden-files: false
+
+  frontend:
+    runs-on: ${{ inputs.RUNNER }}
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Setup Node.js + pnpm
+        uses: ./.github/actions/setup-node-pnpm
+
+      - name: Build design-system
+        run: pnpm build:ds
+
+      - name: Run tests with coverage
+        run: pnpm test:fe:coverage
+
+      - name: Upload coverage report
+        id: coverage-artifact
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fe-coverage
+          path: ${{ inputs.FE_COVERAGE_DIR }}
+          retention-days: 1
+
+      - name: Parse coverage report
+        id: coverage-report-summary
+        run: |
+          echo 'summary<<EOF' >> $GITHUB_OUTPUT
+          cat ${{ inputs.FE_COVERAGE_DIR }}/summary.txt >> $GITHUB_OUTPUT
+          echo 'EOF' >> $GITHUB_OUTPUT
+
+      - name: Post PR comment
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        env:
+          COVERAGE_SUMMARY: ${{ steps.coverage-report-summary.outputs.summary }}
+          ARTIFACT_URL: ${{ steps.coverage-artifact.outputs.artifact-url }}
+        with:
+          script: |
+            const tag = '<!-- coverage-report -->';
+            const body = `${tag}\n### FE Coverage Report Summary\n\n\`\`\`\n${process.env.COVERAGE_SUMMARY}\n\`\`\`\n\n[Coverage Report](${process.env.ARTIFACT_URL})`;
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number
+            });
+            const existing = comments.find(c => c.body.includes(tag));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body
+              });
+            }
+
+  design-system:
+    runs-on: ${{ inputs.RUNNER }}
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Setup Node.js + pnpm
+        uses: ./.github/actions/setup-node-pnpm
+
+      - name: Run tests with coverage
+        run: pnpm test:ds:coverage
+
+      - name: Upload coverage report
+        id: coverage-artifact
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ds-coverage
+          path: ${{ inputs.DS_COVERAGE_DIR }}
+          retention-days: 1
+
+      - name: Parse coverage report
+        id: coverage-report-summary
+        run: |
+          echo 'summary<<EOF' >> $GITHUB_OUTPUT
+          cat ${{ inputs.DS_COVERAGE_DIR }}/summary.txt >> $GITHUB_OUTPUT
+          echo 'EOF' >> $GITHUB_OUTPUT
+
+      - name: Post PR comment
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        env:
+          COVERAGE_SUMMARY: ${{ steps.coverage-report-summary.outputs.summary }}
+          ARTIFACT_URL: ${{ steps.coverage-artifact.outputs.artifact-url }}
+        with:
+          script: |
+            const tag = '<!-- ds-coverage-report -->';
+            const body = `${tag}\n### DS Coverage Report Summary\n\n\`\`\`\n${process.env.COVERAGE_SUMMARY}\n\`\`\`\n\n[Coverage Report](${process.env.ARTIFACT_URL})`;
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number
+            });
+            const existing = comments.find(c => c.body.includes(tag));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body
+              });
+            }

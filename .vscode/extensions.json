@@ -1,0 +1,12 @@
+{
+  "recommendations": [
+    "aaron-bond.better-comments",
+    "mikestead.dotenv",
+    "usernamehw.errorlens",
+    "dbaeumer.vscode-eslint",
+    "eamodio.gitlens",
+    "golang.go",
+    "ms-kubernetes-tools.vscode-kubernetes-tools",
+    "esbenp.prettier-vscode"
+  ]
+}

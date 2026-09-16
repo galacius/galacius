@@ -1,0 +1,52 @@
+name: Publish Design System
+
+on:
+  workflow_call:
+    inputs:
+      RUNNER:
+        type: string
+        required: false
+        default: ubuntu-latest
+      version:
+        type: string
+        required: true
+
+jobs:
+  detect-design-system-changes:
+    name: Detect Design System Changes
+    uses: ./.github/workflows/job-detect-changes.yml
+    with:
+      RUNNER: ${{ inputs.RUNNER }}
+      paths: |
+        packages/design-system/**
+        pnpm-lock.yaml
+        package.json
+        pnpm-workspace.yaml
+        .github/workflows/job-publish-design-system.yml
+        .github/actions/setup-node-pnpm/**
+
+  publish-npm:
+    name: Publish to NPM
+    needs: [detect-design-system-changes]
+    if: ${{ needs.detect-design-system-changes.outputs.changed == 'true' }}
+    runs-on: ${{ inputs.RUNNER }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Setup Node.js + pnpm
+        uses: ./.github/actions/setup-node-pnpm
+
+      - name: Set package version
+        run: pnpm -F @galacius/design-system exec npm version "${VERSION#v}" --no-git-tag-version --allow-same-version
+        env:
+          VERSION: ${{ inputs.version }}
+
+      - name: Build package
+        run: pnpm -F @galacius/design-system run build
+
+      - name: Publish to NPM
+        run: pnpm publish -F @galacius/design-system --no-git-checks

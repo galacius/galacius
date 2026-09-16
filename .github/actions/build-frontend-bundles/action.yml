@@ -1,0 +1,13 @@
+name: Build frontend bundles
+description: Build design-system and @galacius/core (frontend), which also regenerates the plugin vendor shims
+
+runs:
+  using: composite
+  steps:
+    - name: Build design-system
+      shell: bash
+      run: pnpm build:ds
+
+    - name: Build @galacius/core (frontend) + plugin vendor shims
+      shell: bash
+      run: pnpm build:core:fe

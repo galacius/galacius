@@ -1,0 +1,172 @@
+name: Publish to Homebrew
+
+on:
+  workflow_call:
+    inputs:
+      RUNNER:
+        type: string
+        required: false
+        default: ubuntu-latest
+      version:
+        type: string
+        required: true
+
+jobs:
+  publish-homebrew:
+    name: Publish to Homebrew
+    runs-on: ${{ inputs.RUNNER }}
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout main repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Download and validate manifest.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION="${{ inputs.version }}"
+
+          mkdir -p manifest_dir
+          gh release download "$VERSION" \
+            --repo "${{ github.repository }}" \
+            --pattern "manifest.json" \
+            --dir manifest_dir
+
+          MANIFEST="manifest_dir/manifest.json"
+          jq empty "$MANIFEST"
+
+          ARTIFACT=$(jq -r '.artifacts[] | select(.os == "darwin" and .arch == "arm64") | .filename' "$MANIFEST")
+          SHA256=$(jq -r '.artifacts[] | select(.os == "darwin" and .arch == "arm64") | .sha256' "$MANIFEST")
+
+          [[ -n "$ARTIFACT" && -n "$SHA256" ]] || { echo "::error::darwin/arm64 entry missing from manifest"; exit 1; }
+          [[ "$SHA256" =~ ^[a-fA-F0-9]{64}$ ]] || { echo "::error::malformed sha256 in manifest: $SHA256"; exit 1; }
+
+          {
+            echo "artifact=$ARTIFACT"
+            echo "sha256=$SHA256"
+            echo "version_no_v=${VERSION#v}"
+          } >> "$GITHUB_ENV"
+
+      - name: Verify artifact sha256 against downloaded binary
+        run: |
+          set -euo pipefail
+          VERSION="${{ inputs.version }}"
+          DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/$VERSION/${{ env.artifact }}"
+
+          curl -fsSL -o /tmp/artifact "$DOWNLOAD_URL"
+          COMPUTED=$(shasum -a 256 /tmp/artifact | awk '{print $1}')
+
+          [[ "$COMPUTED" == "${{ env.sha256 }}" ]] || {
+            echo "::error::sha256 mismatch — manifest: ${{ env.sha256 }}, downloaded: $COMPUTED"
+            exit 1
+          }
+
+      - name: Checkout tap repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          repository: galacius/homebrew-galacius
+          token: ${{ secrets.HOMEBREW_TAP_PUBLISH_PAT }}
+          path: tap_repo
+
+      - name: Generate cask file
+        run: |
+          set -euo pipefail
+          mkdir -p tap_repo/Casks
+
+          # Plain (unquoted-var) shell substitution for VERSION/SHA256; the
+          # Ruby `#{version}` interpolation has no leading $ so the shell
+          # leaves it untouched regardless of quoting.
+          VERSION_NO_V="${{ env.version_no_v }}"
+          SHA256="${{ env.sha256 }}"
+
+          cat > tap_repo/Casks/galacius.rb <<RUBY
+          cask "galacius" do
+            version "${VERSION_NO_V}"
+            sha256 "${SHA256}"
+
+            url "https://github.com/galacius/galacius/releases/download/v#{version}/galacius-darwin-arm64.zip"
+            name "Galacius"
+            desc "Lightweight Kubernetes desktop dashboard"
+            homepage "https://github.com/galacius/galacius"
+
+            app "galacius.app"
+
+            depends_on arch: :arm64
+
+            postflight_steps do
+              # The app is ad-hoc signed, not notarized. Homebrew preserves the
+              # com.apple.quarantine xattr on extraction, which makes Gatekeeper
+              # refuse to open it at all (no "Open Anyway" override). Strip
+              # quarantine and re-sign ad-hoc, mirroring scripts/install.sh.
+              run "/usr/bin/xattr", args: ["-cr", "{{appdir}}/galacius.app"]
+              run "/usr/bin/codesign",
+                  args: ["--force", "--deep", "--sign", "-", "{{appdir}}/galacius.app"]
+
+              # Record that this install came from Homebrew, so the app's own
+              # runtime detection (which can be fooled by app translocation or
+              # a `brew` binary missing from a GUI process's PATH) doesn't have
+              # to guess. Read by internal/storage.ReadInstallSource, which
+              # internal/updater.DetectInstallSource consults before falling
+              # back to its own heuristics. Reruns (upgrade/reinstall) simply
+              # overwrite this with the same value.
+              mkdir_p ".galacius", base: :home
+              write_file ".galacius/install-source", "homebrew", base: :home
+            end
+
+            uninstall trash: [
+              "~/.galacius/install-source",
+            ]
+
+            caveats do
+              <<~EOS
+                Galacius is ad-hoc signed, not notarized. This cask strips the
+                quarantine attribute and re-signs the app after install so
+                Gatekeeper won't block it. If macOS still shows a warning on
+                first launch, open System Settings > Privacy & Security and
+                click "Open Anyway" next to Galacius.
+
+                Galacius's built-in self-updater is disabled for Homebrew installs.
+                To upgrade, run:
+                  brew update && brew upgrade galacius
+
+                \`brew update\` refreshes Homebrew's local tap cache; \`brew upgrade\` alone
+                may report "already installed" if that cache is stale.
+              EOS
+            end
+
+            livecheck do
+              url :url
+              strategy :github_latest_release
+              regex(/^v?(\d+(?:\.\d+)*)$/i)
+            end
+          end
+          RUBY
+
+      - name: Install Homebrew and audit cask
+        run: |
+          set -euo pipefail
+          if ! command -v brew &> /dev/null; then
+            NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+            eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+          fi
+
+          # `brew audit <path>` is disabled (arbitrary Ruby execution risk); audit
+          # by name instead, via a local tap pointed at the checked-out tap repo.
+          brew tap galacius/galacius "$PWD/tap_repo"
+          brew audit --cask --strict galacius/galacius/galacius
+
+      - name: Commit and push to tap repository
+        working-directory: tap_repo
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Casks/galacius.rb
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: publish galacius ${{ inputs.version }} to Homebrew"
+            git push origin HEAD
+          else
+            echo "No cask changes to publish."
+          fi

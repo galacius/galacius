@@ -1,0 +1,65 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@import "./styles.typography.css";
+@import "./styles.animation.css";
+@import "./styles.palette.css";
+
+@source "./";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: calc(var(--radius) * 1.2);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+  --radius: 0.625rem;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/75;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+}
+
+@layer utilities {
+  /* Focus Ring */
+  .focus-ring {
+    @apply focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/75;
+  }
+
+  .shadow-subtle {
+    box-shadow: 0 1px 3px color-mix(in oklch, var(--foreground) 5%, transparent);
+  }
+  .shadow-depth-1 {
+    box-shadow: 0 2px 8px color-mix(in oklch, var(--foreground) 8%, transparent);
+  }
+  .shadow-depth-2 {
+    box-shadow: 0 4px 16px color-mix(in oklch, var(--foreground) 12%, transparent);
+  }
+
+  /* Z-Index Scale */
+  .z-sticky {
+    @apply z-10;
+  }
+  .z-overlay {
+    @apply z-50;
+  }
+  .z-popover-nested {
+    @apply z-70;
+  }
+}

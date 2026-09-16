@@ -1,0 +1,10 @@
+Package: galacius
+Version: 0.0.0
+Architecture: amd64
+Section: utils
+Priority: optional
+Maintainer: Galacius Team <packages@galacius.io>
+Depends: ${LIBWEBKIT_PKG}, libgtk-3-0, libc6 (>= 2.31)
+Homepage: https://github.com/galacius/galacius
+Description: Desktop Kubernetes dashboard
+ Galacius is a lightweight, native desktop Kubernetes dashboard built with Wails.

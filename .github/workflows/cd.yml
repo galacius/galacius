@@ -1,0 +1,88 @@
+name: CD
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  release-version:
+    name: Release Version
+    uses: ./.github/workflows/job-release-semver.yml
+    secrets: inherit
+
+  build:
+    name: Build
+    needs: [release-version]
+    if: ${{ needs.release-version.result == 'success' }}
+    uses: ./.github/workflows/job-build.yml
+    secrets: inherit
+    with:
+      version: ${{ needs.release-version.outputs.tag_name }}
+
+  publish-homebrew:
+    name: Publish to Homebrew
+    needs: [release-version, build]
+    # Homebrew only needs the macOS artifact and the manifest that
+    # references it — it shouldn't be blocked by Windows/Linux build
+    # failures within job-build.yml, so check those two job results
+    # directly instead of the reusable workflow's overall (all-jobs) result.
+    # `always()` is required here: without an explicit status-check function,
+    # GitHub implicitly ANDs the whole expression with success(), which would
+    # skip this job whenever `build`'s overall conclusion is "failure" (e.g.
+    # one deb codename leg failing) even though the outputs check below would
+    # otherwise allow it to run.
+    if: ${{ always() && needs.build.outputs.macos_build_result == 'success' && needs.build.outputs.manifest_result == 'success' && needs.release-version.outputs.tag_name != 'dev' }}
+    uses: ./.github/workflows/job-publish-homebrew.yml
+    secrets: inherit
+    with:
+      version: ${{ needs.release-version.outputs.tag_name }}
+
+  publish-apt:
+    name: Publish to APT
+    needs: [release-version, build]
+    # APT only needs at least one successful .deb build (noble/jammy/focal)
+    # and the manifest that references them — job-publish-apt.yml already
+    # tolerates a partial .deb set (it includes whatever release assets
+    # exist and only errors out if none do), so this shouldn't require every
+    # codename to succeed, nor be blocked by macOS/Windows/plain-Linux build
+    # failures within job-build.yml.
+    # `always()` is required here: without an explicit status-check function,
+    # GitHub implicitly ANDs the whole expression with success(), which would
+    # skip this job whenever `build`'s overall conclusion is "failure" (e.g.
+    # any single leg failing) even though the outputs check below would
+    # otherwise allow it to run.
+    if: >-
+      ${{ always() && (
+        needs.build.outputs.deb_noble_result == 'success' ||
+        needs.build.outputs.deb_jammy_result == 'success' ||
+        needs.build.outputs.deb_focal_result == 'success'
+      ) && needs.build.outputs.manifest_result == 'success' && needs.release-version.outputs.tag_name != 'dev' }}
+    uses: ./.github/workflows/job-publish-apt.yml
+    secrets: inherit
+    with:
+      version: ${{ needs.release-version.outputs.tag_name }}
+
+  publish-design-system:
+    name: Publish Design System
+    needs: [release-version]
+    if: ${{ needs.release-version.result == 'success' && vars.DESIGN_SYSTEM_RELEASED == 'true' }}
+    uses: ./.github/workflows/job-publish-design-system.yml
+    secrets: inherit
+    with:
+      version: ${{ needs.release-version.outputs.tag_name }}
+    permissions:
+      id-token: write
+      contents: read
+
+  publish-core-packages:
+    name: Publish Core Packages
+    needs: [release-version]
+    if: ${{ needs.release-version.result == 'success' && vars.CORE_PACKAGE_RELEASED == 'true' }}
+    uses: ./.github/workflows/job-publish-core-packages.yml
+    secrets: inherit
+    with:
+      version: ${{ needs.release-version.outputs.tag_name }}
+    permissions:
+      id-token: write
+      contents: write

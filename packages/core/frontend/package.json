@@ -1,0 +1,55 @@
+{
+  "name": "@galacius/core",
+  "version": "1.0.0",
+  "description": "React hooks and utilities for galacius plugin development",
+  "private": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/galacius/galacius.git",
+    "directory": "packages/core/frontend"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "exports": {
+    ".": {
+      "import": "./dist/index.js"
+    },
+    "./tsup-preset": {
+      "import": "./dist/tsup-preset.js"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "peerDependencies": {
+    "@tanstack/react-query": "^5.101.4",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "dependencies": {
+    "@tailwindcss/cli": "^4.3.3",
+    "esbuild-visualizer": "^0.7.0",
+    "tsup": "^8.5.1"
+  },
+  "devDependencies": {
+    "@tanstack/react-query": "^5.102.8",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
+    "jsdom": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

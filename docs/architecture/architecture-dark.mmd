@@ -1,0 +1,40 @@
+%%{init: {"theme": "dark"}}%%
+flowchart LR
+    subgraph FE["Frontend (React / TypeScript)"]
+        UI["React components"]
+        Hooks["TanStack Query hooks"]
+        Bindings["Wails JS bindings\n(frontend/wailsjs)"]
+        EventListeners["Event listeners\n(useXxxUpdateEvents)"]
+    end
+
+    subgraph BE["Backend (Go)"]
+        AppMethods["App methods\n(internal/app)"]
+        subgraph Cache["Informer cache, per resource kind\n(internal/kube, internal/kube/nsscope)"]
+            Lister["Lister"]
+            Indexer[("Indexer\n(in-memory objects)")]
+            Reflector["Reflector\n(LIST + WATCH)"]
+            Forbidden["Watch error handler\n(403 -> evict + mark forbidden)"]
+        end
+        K8sClient["Kubernetes clientset"]
+    end
+
+    K8sAPI[("Kubernetes API server")]
+
+    UI --> Hooks
+    Hooks -->|"method call\n(request/response)"| Bindings
+    Bindings -->|"IPC call"| AppMethods
+    AppMethods -->|"lister.List()/.Get()\n(local read, no API call)"| Lister
+    Lister --> Indexer
+    Reflector -->|"LIST + WATCH"| K8sClient
+    K8sClient <-->|watch/list| K8sAPI
+    Reflector -->|"populate / update"| Indexer
+    Reflector -->|"watch error:\n'is forbidden'"| Forbidden
+    Forbidden -->|"evict cached objects"| Indexer
+    Forbidden -->|"resource:forbidden"| EventListeners
+    Indexer -->|"runtime.EventsEmit\n(e.g. pods:update)"| EventListeners
+    EventListeners -->|merge over query cache| Hooks
+    AppMethods -->|"return value\n(IPC response)"| Bindings
+    Bindings --> Hooks
+
+    linkStyle 11,12 stroke:#facc15,stroke-width:2px,color:#facc15
+    linkStyle 8,9,10 stroke:#f87171,stroke-width:2px,color:#f87171

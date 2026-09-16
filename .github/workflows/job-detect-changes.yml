@@ -1,0 +1,61 @@
+name: Detect Path Changes
+
+on:
+  workflow_call:
+    inputs:
+      RUNNER:
+        type: string
+        required: false
+        default: ubuntu-latest
+      paths:
+        description: "Newline-separated list of pathspecs to watch (git pathspec syntax, e.g. 'design-system/**')"
+        type: string
+        required: true
+    outputs:
+      changed:
+        description: "'true' if any watched path changed since the previous pushed commit"
+        value: ${{ jobs.detect.outputs.changed }}
+
+jobs:
+  detect:
+    name: Detect Changes
+    runs-on: ${{ inputs.RUNNER }}
+    outputs:
+      changed: ${{ steps.detect.outputs.changed }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0
+
+      - name: Detect changes
+        id: detect
+        env:
+          PATHS: ${{ inputs.paths }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          # All-zero SHA means first push to the branch (no prior commit to diff against) —
+          # fail open so a legitimate first release isn't silently skipped.
+          if [[ "$BEFORE" == "0000000000000000000000000000000000000000" || -z "$BEFORE" ]]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          pathspecs=()
+          while IFS= read -r line; do
+            [[ -n "$line" ]] && pathspecs+=("$line")
+          done <<< "$PATHS"
+
+          set +e
+          git diff --quiet "$BEFORE" HEAD -- "${pathspecs[@]}"
+          status=$?
+          set -e
+
+          if [[ $status -eq 0 ]]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          elif [[ $status -eq 1 ]]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::git diff failed unexpectedly (exit $status) — cannot determine changed paths" >&2
+            exit "$status"
+          fi

@@ -1,0 +1,76 @@
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/space-grotesk";
+
+@theme inline {
+  --font-sans: "Inter Variable", sans-serif;
+  --font-heading: "Space Grotesk Variable", sans-serif;
+}
+
+@layer utilities {
+  /* Typography Scale
+   * Semantic wrappers over Tailwind v4's built-in --font-weight-* tokens (light 300, normal 400, medium 500, semibold 600, bold 700).
+   * Use these utilities (.text-h1, .text-h2, .text-body, etc.) instead of raw font-* classes to preserve semantic hierarchy.
+   */
+  .text-display {
+    @apply text-2xl font-bold;
+  }
+  .text-h1 {
+    @apply text-lg font-bold;
+  }
+  .text-h2 {
+    @apply text-base font-semibold;
+  }
+  .text-h3 {
+    @apply text-sm font-semibold;
+  }
+  .text-h4 {
+    @apply text-sm font-medium;
+  }
+  .text-h5 {
+    @apply text-xs font-semibold;
+  }
+  .text-h6 {
+    @apply text-xs font-medium;
+  }
+  .text-body {
+    @apply text-sm font-normal;
+  }
+  .text-caption {
+    @apply text-xs font-normal;
+  }
+  .text-label {
+    @apply text-xs font-medium;
+  }
+
+  /* Semantic Aliases (optional, for intent-based naming) */
+  .headline-display {
+    @apply text-2xl font-bold;
+  }
+  .headline-1 {
+    @apply text-lg font-bold;
+  }
+  .headline-2 {
+    @apply text-base font-semibold;
+  }
+  .headline-3 {
+    @apply text-sm font-semibold;
+  }
+  .headline-4 {
+    @apply text-sm font-medium;
+  }
+  .headline-5 {
+    @apply text-xs font-semibold;
+  }
+  .headline-6 {
+    @apply text-xs font-medium;
+  }
+  .body-text {
+    @apply text-sm font-normal;
+  }
+  .caption-text {
+    @apply text-xs font-normal;
+  }
+  .label-text {
+    @apply text-xs font-medium;
+  }
+}

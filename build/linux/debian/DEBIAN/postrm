@@ -1,0 +1,27 @@
+#!/bin/bash
+set -e
+
+# Update desktop database and icon cache on both remove and purge
+if command -v update-desktop-database >/dev/null 2>&1; then
+  update-desktop-database /usr/share/applications || true
+fi
+
+if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+  gtk-update-icon-cache /usr/share/icons/hicolor || true
+fi
+
+# Remove user data only on purge
+if [ "$1" = "purge" ]; then
+  # Determine the real user's home directory (works when run via sudo or directly)
+  if [ -n "$SUDO_USER" ]; then
+    USER_HOME=$(eval echo "~$SUDO_USER")
+  else
+    USER_HOME="$HOME"
+  fi
+
+  if [ -d "$USER_HOME/.galacius" ]; then
+    rm -rf "$USER_HOME/.galacius" || true
+  fi
+fi
+
+exit 0

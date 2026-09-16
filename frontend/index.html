@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>galacius</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <!--
+      Resolves bare module specifiers left in dynamically-imported plugin
+      bundles (built with react/react-dom/@galacius/design-system marked
+      "external" so plugins share the host's own instances instead of
+      bundling their own copies). Only affects runtime import() calls, not
+      Vite's own build-time module graph, which rewrites all host-code
+      imports to resolved paths before this ever reaches the browser.
+      See frontend/public/vendor/*.js and src/main.tsx.
+    -->
+    <script type="importmap">
+      {
+        "imports": {
+          "react": "/vendor/react.js",
+          "react-dom": "/vendor/react-dom.js",
+          "react/jsx-runtime": "/vendor/react-jsx-runtime.js",
+          "@galacius/design-system": "/vendor/galacius/design-system.js",
+          "@galacius/core": "/vendor/galacius/core.js",
+          "@tanstack/react-query": "/vendor/tanstack/react-query.js"
+        }
+      }
+    </script>
+    <script src="./src/main.tsx" type="module"></script>
+  </body>
+</html>

@@ -1,0 +1,45 @@
+packages:
+  - "frontend"
+  - "packages/design-system"
+  - "packages/core/frontend"
+catalog:
+  "@testing-library/jest-dom": ^6.10.0
+  "@testing-library/react": ^16.3.3
+  "@types/node": ^26.5.0
+  "@types/react": ^19.2.18
+  "@types/react-dom": ^19.2.7
+  "@vitejs/plugin-react": ^6.1.1
+  "@vitest/coverage-v8": ^4.1.11
+  cross-env: ^10.1.0
+  esbuild-visualizer: ^0.7.0
+  jsdom: ^29.1.1
+  typescript: ^6.0.3
+  vitest: ^4.1.11
+allowBuilds:
+  esbuild: true
+  msgpackr-extract: true
+  msw: true
+  "@parcel/watcher": true
+minimumReleaseAgeExclude:
+  - "@opentelemetry/core@2.8.0"
+  - hono@4.12.25
+  - eslint@10.9.0 || 10.9.1
+  - shadcn@4.19.0
+  - '@tanstack/query-core@5.102.3 || 5.102.7 || 5.102.8'
+  - '@tanstack/react-query@5.102.3 || 5.102.7 || 5.102.8'
+  - '@types/node@26.3.0 || 26.4.0 || 26.5.0'
+  - '@typescript-eslint/eslint-plugin@8.68.0'
+  - '@typescript-eslint/parser@8.68.0'
+  - '@typescript-eslint/project-service@8.68.0'
+  - '@typescript-eslint/scope-manager@8.68.0'
+  - '@typescript-eslint/tsconfig-utils@8.68.0'
+  - '@typescript-eslint/type-utils@8.68.0'
+  - '@typescript-eslint/types@8.68.0'
+  - '@typescript-eslint/typescript-estree@8.68.0'
+  - '@typescript-eslint/utils@8.68.0'
+  - '@typescript-eslint/visitor-keys@8.68.0'
+  - typescript-eslint@8.68.0
+  - '@testing-library/react@16.3.3'
+  - '@vitejs/plugin-react@6.1.1'
+  - lucide-react@1.35.0 || 1.42.0 || 1.43.0
+  - cronstrue@3.25.0
