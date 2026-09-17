@@ -11,6 +11,11 @@ on:
         description: "Newline-separated list of pathspecs to watch (git pathspec syntax, e.g. 'design-system/**')"
         type: string
         required: true
+      ref:
+        description: "Git ref/SHA to check out (defaults to the triggering event's ref when omitted)"
+        type: string
+        required: false
+        default: ""
     outputs:
       changed:
         description: "'true' if any watched path changed since the previous pushed commit"
@@ -26,13 +31,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
+          ref: ${{ inputs.ref }}
           fetch-depth: 0
 
       - name: Detect changes
         id: detect
         env:
           PATHS: ${{ inputs.paths }}
-          BEFORE: ${{ github.event.before }}
+          # push events carry github.event.before directly; pull_request events don't,
+          # so fall back to the PR's base SHA (the master tip the PR branched from/last
+          # synced against) as the closest available "previous commit" to diff against.
+          BEFORE: ${{ github.event.before || github.event.pull_request.base.sha }}
         run: |
           # All-zero SHA means first push to the branch (no prior commit to diff against) —
           # fail open so a legitimate first release isn't silently skipped.

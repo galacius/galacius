@@ -10,6 +10,11 @@ on:
       version:
         type: string
         required: true
+      ref:
+        description: "Git ref/SHA to check out (defaults to the triggering event's ref when omitted)"
+        type: string
+        required: false
+        default: ""
 
 jobs:
   detect-core-be-changes:
@@ -17,6 +22,7 @@ jobs:
     uses: ./.github/workflows/job-detect-changes.yml
     with:
       RUNNER: ${{ inputs.RUNNER }}
+      ref: ${{ inputs.ref }}
       paths: |
         packages/core/go.mod
         packages/core/go.sum
@@ -32,6 +38,7 @@ jobs:
     uses: ./.github/workflows/job-detect-changes.yml
     with:
       RUNNER: ${{ inputs.RUNNER }}
+      ref: ${{ inputs.ref }}
       paths: |
         packages/core/frontend/**
         pnpm-lock.yaml
@@ -50,6 +57,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ inputs.ref }}
 
       - name: Setup Go from packages/core/go.mod
         uses: ./.github/actions/setup-go
@@ -71,9 +80,16 @@ jobs:
         uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
         env:
           CORE_TAG: ${{ steps.tag.outputs.tag }}
+          # context.sha isn't reliable here: under a pull_request-triggered run it's
+          # GitHub's synthetic PR-merge-preview SHA, not the commit that actually
+          # landed on master. inputs.ref (threaded down from cd.yml as the PR's
+          # merge_commit_sha) is the real target; fall back to context.sha for
+          # direct workflow_call invocations that don't pass one.
+          CORE_SHA: ${{ inputs.ref || github.sha }}
         with:
           script: |
             const tag = process.env.CORE_TAG;
+            const sha = process.env.CORE_SHA;
 
             // Create an annotated tag object + ref explicitly, same pattern as
             // job-release-semver.yml — createRelease alone would only create a
@@ -84,7 +100,7 @@ jobs:
                 repo: context.repo.repo,
                 tag,
                 message: `Release ${tag}`,
-                object: context.sha,
+                object: sha,
                 type: 'commit'
               });
               await github.rest.git.createRef({
@@ -93,7 +109,7 @@ jobs:
                 ref: `refs/tags/${tag}`,
                 sha: tagObj.sha
               });
-              core.info(`Created tag ${tag} -> ${context.sha}`);
+              core.info(`Created tag ${tag} -> ${sha}`);
             } catch (err) {
               if (err.status === 422) {
                 core.info(`Tag ${tag} already exists, skipping`);
@@ -113,6 +129,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ inputs.ref }}
 
       - name: Setup Node.js + pnpm
         uses: ./.github/actions/setup-node-pnpm

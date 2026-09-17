@@ -1,15 +1,23 @@
 name: CD
 
 on:
-  push:
+  pull_request:
+    types:
+      - closed
     branches:
       - master
 
 jobs:
   release-version:
     name: Release Version
+    if: ${{ github.event.pull_request.merged == true }}
     uses: ./.github/workflows/job-release-semver.yml
     secrets: inherit
+    with:
+      # github.sha under pull_request events is GitHub's synthetic PR-merge-preview
+      # SHA, not the commit that actually lands on master — use the real merge
+      # commit instead so the tag/release/build/publish chain targets it.
+      ref: ${{ github.event.pull_request.merge_commit_sha }}
 
   build:
     name: Build
@@ -19,6 +27,7 @@ jobs:
     secrets: inherit
     with:
       version: ${{ needs.release-version.outputs.tag_name }}
+      ref: ${{ github.event.pull_request.merge_commit_sha }}
 
   publish-homebrew:
     name: Publish to Homebrew
@@ -71,6 +80,7 @@ jobs:
     secrets: inherit
     with:
       version: ${{ needs.release-version.outputs.tag_name }}
+      ref: ${{ github.event.pull_request.merge_commit_sha }}
     permissions:
       id-token: write
       contents: read
@@ -83,6 +93,7 @@ jobs:
     secrets: inherit
     with:
       version: ${{ needs.release-version.outputs.tag_name }}
+      ref: ${{ github.event.pull_request.merge_commit_sha }}
     permissions:
       id-token: write
       contents: write

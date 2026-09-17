@@ -7,6 +7,11 @@ on:
         type: string
         required: false
         default: "dev"
+      ref:
+        description: "Git ref/SHA to check out (defaults to the triggering event's ref when omitted)"
+        type: string
+        required: false
+        default: ""
     outputs:
       windows_build_result:
         description: "Result of the standalone Windows build job (success/failure/cancelled/skipped)"
@@ -49,6 +54,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ inputs.ref }}
 
       - name: Setup Go from go.mod
         uses: ./.github/actions/setup-go
@@ -110,6 +117,7 @@ jobs:
     uses: ./.github/workflows/job-build-deb.yml
     with:
       version: ${{ inputs.version }}
+      ref: ${{ inputs.ref }}
       codename: noble
       libwebkit_version: libwebkit2gtk-4.1-0
     secrets: inherit
@@ -118,6 +126,7 @@ jobs:
     uses: ./.github/workflows/job-build-deb.yml
     with:
       version: ${{ inputs.version }}
+      ref: ${{ inputs.ref }}
       codename: jammy
       libwebkit_version: libwebkit2gtk-4.0-37
     secrets: inherit
@@ -126,6 +135,7 @@ jobs:
     uses: ./.github/workflows/job-build-deb.yml
     with:
       version: ${{ inputs.version }}
+      ref: ${{ inputs.ref }}
       codename: focal
       libwebkit_version: libwebkit2gtk-4.0-37
     secrets: inherit
@@ -142,6 +152,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ inputs.ref }}
 
       - name: Setup Go from go.mod
         uses: ./.github/actions/setup-go
@@ -207,6 +219,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ inputs.ref }}
 
       - name: Setup Go from go.mod
         uses: ./.github/actions/setup-go
@@ -291,6 +305,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ inputs.ref }}
 
       - name: Download checksum artifacts
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
