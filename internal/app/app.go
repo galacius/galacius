@@ -243,6 +243,48 @@ func (a *App) emitConnectStatus(contextName, message string) {
 	})
 }
 
+// handleProxyLost tears down the cached clientset/informer factory for
+// contextName when its setup-command proxy dies mid-session (e.g. a tunnel
+// that doesn't survive the machine sleeping for a long time) and tells the
+// frontend the session needs to reconnect.
+//
+// Without this, Connect() had already returned successfully long ago and the
+// frontend has moved on to showing the normal cluster UI (MainLayout), which
+// has no listener for the proxy manager's Degraded/Crashed events — only the
+// initial "connecting" screen does, and it's unmounted by then. Every
+// resource view was left silently wired to informers that can never sync
+// again against the now-dead local proxy port, with nothing but a passive
+// footer dot to hint anything was wrong and no way to trigger a reconnect
+// short of quitting the app. Clearing activeContext here, in addition to
+// stopping the stale factory, also makes a subsequent Connect() to this same
+// context rebuild its clientset from scratch instead of reusing one whose
+// underlying transport was dialed through the dead proxy.
+func (a *App) handleProxyLost(contextName, message string) {
+	a.mu.Lock()
+	if a.activeContext != contextName {
+		// Already disconnected/switched away by the time this fired; nothing to tear down.
+		a.mu.Unlock()
+		return
+	}
+	factory := a.factories[contextName]
+	delete(a.factories, contextName)
+	delete(a.clients, contextName)
+	delete(a.restConfigs, contextName)
+	delete(a.metricsClients, contextName)
+	a.activeContext = ""
+	a.mu.Unlock()
+
+	if factory != nil {
+		factory.Stop()
+	}
+
+	log.Printf("app: proxy for %q lost mid-session, connection torn down: %s", contextName, message)
+	wailsruntime.EventsEmit(a.ctx, "cluster:connectionLost", map[string]string{
+		"context": contextName,
+		"message": message,
+	})
+}
+
 // Connect builds (or reuses) a clientset for the given context, probes the API
 // server, and marks the context active. The ping runs outside the lock so a
 // slow or unreachable cluster never blocks other goroutines reading the cache.

@@ -69,6 +69,16 @@ func (a *App) ensureProxyManager(contextName, command, httpProxy, httpsProxy str
 			"context": contextName,
 			"message": message,
 		})
+
+		// A Degraded/Crashed transition after the manager was already Ready
+		// means a previously-working proxy died mid-session (as opposed to
+		// failing during the initial Connect(), which the frontend's
+		// connecting screen already handles via this same event). Tear down
+		// the now-stale clientset/informers so the app can recover instead of
+		// hanging against a dead connection indefinitely — see handleProxyLost.
+		if eventName == "SetupCommandDegraded" || eventName == "SetupCommandCrashed" {
+			go a.handleProxyLost(contextName, message)
+		}
 	})
 	applyHealthCheckInterval(m, healthCheckIntervalSeconds)
 	a.proxyManagers[contextName] = m
