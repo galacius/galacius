@@ -1,25 +1,26 @@
-import { ErrorBoundary, Toaster, TooltipProvider } from "@galacius/design-system";
+import { ErrorBoundary, renderErrorToast, Toaster, TooltipProvider } from "@galacius/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { FC, useEffect, useReducer, useRef } from "react";
 import { AboutModal } from "./about/AboutModal";
 import { useMenuOpenAboutEvents } from "./about/hooks/async-events/useMenuOpenAboutEvents";
-import { AppFooter } from "./footer/AppFooter";
 import { ClusterRail } from "./ClusterRail";
 import { ClusterSettingsModal } from "./clusters/ClusterSettingsModal";
 import { ConnectingView } from "./clusters/ConnectingView";
 import { MainLayout } from "./clusters/MainLayout";
+import { AppFooter } from "./footer/AppFooter";
 import { MarketplaceView } from "./marketplace/MarketplaceView";
 import { PluginRegistryReconciler } from "./plugins/PluginRegistryReconciler";
 import type { Section } from "./settings/components/types";
 import { useMenuOpenSettingsEvents } from "./settings/hooks/async-events/useMenuOpenSettingsEvents";
 import { SettingsView } from "./settings/SettingsView";
+import { useClusterConnectionLostEvents } from "./shared/hooks/async-events/useClusterConnectionLostEvents";
 import { useKubeconfigChangedEvents } from "./shared/hooks/async-events/useKubeconfigChangedEvents";
 import { usePluginsChangedEvents } from "./shared/hooks/async-events/usePluginsChangedEvents";
 import { useGetContextsGrouped } from "./shared/hooks/data-access/useGetContextsGrouped";
 import { useConnect } from "./shared/hooks/useConnect";
 import { useIsMarketplaceEnabled } from "./shared/hooks/useIsMarketplaceEnabled";
-import { useGetVersion } from "./updater/hooks/data-access/useGetVersion";
 import { useUpdateAvailableEvents } from "./updater/hooks/async-events/useUpdateAvailableEvents";
+import { useGetVersion } from "./updater/hooks/data-access/useGetVersion";
 import { UpdateModal } from "./updater/UpdateModal";
 
 type AboutPayload = {
@@ -50,6 +51,7 @@ type AppAction =
   | { type: "CONNECT_SUCCESS"; ctx: string; attempt: number }
   | { type: "CONNECT_FAIL"; ctx: string; attempt: number }
   | { type: "CONNECT_DONE" }
+  | { type: "CONNECTION_LOST"; ctx: string }
   | { type: "CLEAR_CONNECT_FAIL" }
   | { type: "SET_SETTINGS_OPEN"; open: boolean; section?: Section }
   | { type: "SET_MARKETPLACE_OPEN"; open: boolean }
@@ -98,6 +100,20 @@ function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, connectingContext: null, connectFailedCtx: action.ctx };
     case "CONNECT_DONE":
       return { ...state, connectingContext: null };
+    case "CONNECTION_LOST": {
+      // Only meaningful for the context that's actually active — a stale
+      // event for a context the user already switched away from (or
+      // reconnected to since) shouldn't yank them back to the failed screen.
+      if (state.activeContext !== action.ctx) return state;
+      const next = new Set(state.connectedContexts);
+      next.delete(action.ctx);
+      return {
+        ...state,
+        connectedContexts: next,
+        activeContext: "",
+        connectFailedCtx: action.ctx,
+      };
+    }
     case "CLEAR_CONNECT_FAIL":
       return { ...state, connectFailedCtx: null };
     case "SET_SETTINGS_OPEN":
@@ -212,6 +228,13 @@ export const App: FC = () => {
 
   useKubeconfigChangedEvents();
   usePluginsChangedEvents();
+  useClusterConnectionLostEvents(({ context, message }) => {
+    renderErrorToast({
+      title: "Cluster connection lost",
+      description: message || `Lost connection to ${context}. Reconnect to continue.`,
+    });
+    dispatch({ type: "CONNECTION_LOST", ctx: context });
+  });
   useMenuOpenSettingsEvents(() =>
     dispatch({ type: "SET_SETTINGS_OPEN", open: true, section: "welcome" })
   );
