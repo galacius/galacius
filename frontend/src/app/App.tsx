@@ -9,6 +9,7 @@ import { ConnectingView } from "./clusters/ConnectingView";
 import { MainLayout } from "./clusters/MainLayout";
 import { AppFooter } from "./footer/AppFooter";
 import { MarketplaceView } from "./marketplace/MarketplaceView";
+import { PluginEventListener } from "./plugins/PluginEventListener";
 import { PluginRegistryReconciler } from "./plugins/PluginRegistryReconciler";
 import type { Section } from "./settings/components/types";
 import { useMenuOpenSettingsEvents } from "./settings/hooks/async-events/useMenuOpenSettingsEvents";
@@ -305,6 +306,7 @@ export const App: FC = () => {
   return (
     <TooltipProvider>
       <PluginRegistryReconciler />
+      <PluginEventListener />
       <div className="flex h-screen flex-col overflow-hidden">
         <div className="flex min-h-0 flex-1 overflow-hidden">
           {error ? (

@@ -31,6 +31,14 @@ class PluginEventRegistry {
     return this.registry.get(eventName)?.handler;
   }
 
+  getHandlerFor(pluginId: string, eventName: string): ((payload: unknown) => void) | undefined {
+    const entry = this.registry.get(eventName);
+    if (entry && entry.pluginId === pluginId) {
+      return entry.handler;
+    }
+    return undefined;
+  }
+
   getRegisteredPluginIds(): string[] {
     return Array.from(new Set(Array.from(this.registry.values()).map((entry) => entry.pluginId)));
   }

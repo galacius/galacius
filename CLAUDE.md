@@ -28,7 +28,7 @@ pnpm build:app:fe        # build:ds + frontend build only (no Wails binary)
 
 ```bash
 pnpm format              # prettier --write across ts/tsx/js/json/css/md/yml
-pnpm lint:fe              # eslint frontend/src design-system/src packages/core/frontend/src
+pnpm lint:fe              # eslint frontend/src packages/design-system/src packages/core/frontend/src
 pnpm lint:be              # go vet + staticcheck for ./internal/... and the packages/core module
 ```
 

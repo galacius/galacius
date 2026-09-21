@@ -19,7 +19,7 @@ import { usePluginNavEntries } from "./plugins/hooks/registry/nav/usePluginNavEn
 import { pluginTrayRegistry } from "./plugins/hooks/registry/tray/pluginTrayRegistry";
 import { usePluginTrayFamilies } from "./plugins/hooks/registry/tray/usePluginTrayFamilies";
 import { pluginViewRegistry } from "./plugins/hooks/registry/view/pluginViewRegistry";
-import { PluginEventsSubscriber } from "./plugins/PluginEventsSubscriber";
+import { PluginDisabledSubscriber } from "./plugins/PluginDisabledSubscriber";
 import { PluginResourceView } from "./plugins/PluginResourceView";
 import { DetailBlock } from "./shared/components/details/DetailBlock";
 import { NamespaceMultiSelect } from "./shared/components/NamespaceMultiSelect";
@@ -381,7 +381,7 @@ export const MainLayout: FC<MainLayoutProps> = ({ activeContext, onOpenMarketpla
       onNavigateToView={setActiveResource}
       className="flex h-full min-w-0 flex-1 overflow-hidden"
     >
-      <PluginEventsSubscriber />
+      <PluginDisabledSubscriber />
 
       {/* Sidebar */}
       <NavSidebar
