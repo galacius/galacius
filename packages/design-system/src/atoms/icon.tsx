@@ -1,6 +1,7 @@
 // Explicit allowlist, not `export *` — several lucide-react icon names collide with
 // existing shadcn atom/component exports (e.g. Badge, Sheet, Table, Donut).
 export {
+  Activity as ActivityIcon,
   AppWindowIcon,
   ArrowLeftRightIcon,
   ArrowUpCircleIcon,
