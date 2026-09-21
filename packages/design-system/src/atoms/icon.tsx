@@ -36,6 +36,7 @@ export {
   FolderSyncIcon,
   FrownIcon,
   GaugeIcon,
+  GripVerticalIcon,
   HardDriveIcon,
   HouseIcon,
   InfoIcon,
