@@ -1,4 +1,5 @@
 import type { QueryClient } from "@tanstack/react-query";
+import type { PluginFooterWidget } from "../types/footer";
 import type { PluginSettingsTab } from "../types/settings";
 
 /**
@@ -52,6 +53,29 @@ function registerSettingsTab(
 }
 
 /**
+ * Register a footer widget for the plugin. The widget will appear in the host's
+ * footer bar alongside other widgets.
+ *
+ * Example:
+ *   appWideAPI.registerFooterWidget(PLUGIN_ID, { id: PLUGIN_ID, component: MyFooterWidget });
+ *
+ * This function is replaced at runtime by the host's actual implementation
+ * (injected in frontend/src/expose/index.tsx). If you see this error,
+ * registerFooterWidget was called before the host initialized the injection.
+ */
+function registerFooterWidget(
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  pluginId: string,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  widget: PluginFooterWidget
+): void {
+  throw new Error(
+    "appWideAPI.registerFooterWidget is not available. This function must be imported from " +
+      "'@galacius/core' within a plugin bundle loaded by the galacius host."
+  );
+}
+
+/**
  * Get the host's singleton QueryClient instance. Useful for plugin code
  * that isn't a mounted React component (e.g. module-scope registration in
  * index.ts) and therefore can't call useQueryClient()'s hook.
@@ -78,5 +102,6 @@ function getQueryClient(): QueryClient {
 export const appWideAPI = {
   registerStylesheets,
   registerSettingsTab,
+  registerFooterWidget,
   getQueryClient,
 };

@@ -1,4 +1,5 @@
-import type { PluginSettingsTab } from "@galacius/core";
+import type { PluginFooterWidget, PluginSettingsTab } from "@galacius/core";
+import { pluginFooterRegistry } from "./hooks/registry/footer/pluginFooterRegistry";
 import { pluginSettingsRegistry } from "./hooks/registry/settings/pluginSettingsRegistry";
 import { pluginStylesheetRegistry } from "./hooks/registry/stylesheet/pluginStylesheetRegistry";
 
@@ -6,13 +7,24 @@ interface PluginAppWideAssetSnapshot {
   bundleChecksum: string | undefined;
   stylesheets: Array<Promise<{ default: string }>>;
   settingsTab?: PluginSettingsTab;
+  footerWidget?: PluginFooterWidget;
 }
 
 const snapshots = new Map<string, PluginAppWideAssetSnapshot>();
 
+// Listen to footer widget unregister events and clear stale snapshots.
+// This ensures that if a plugin self-unregisters a widget at runtime,
+// a later restore won't resurrect the stale widget.
+pluginFooterRegistry.subscribeFooterWidgetUnregister((pluginId: string) => {
+  const snapshot = snapshots.get(pluginId);
+  if (snapshot) {
+    snapshot.footerWidget = undefined;
+  }
+});
+
 /**
  * Captures whatever a plugin bundle's module-eval-time registration calls
- * (registerStylesheets/registerSettingsTab) just populated into the app-wide
+ * (registerStylesheets/registerSettingsTab/registerFooterWidget) just populated into the app-wide
  * registries, keyed by pluginId + bundleChecksum. Call right after a fresh
  * `import()` of a plugin bundle succeeds.
  */
@@ -24,6 +36,7 @@ export function captureAppWidePluginSnapshot(
     bundleChecksum,
     stylesheets: pluginStylesheetRegistry.getStylesheets(pluginId),
     settingsTab: pluginSettingsRegistry.getSettingsTab(pluginId),
+    footerWidget: pluginFooterRegistry.getFooterWidget(pluginId),
   });
 }
 
@@ -34,7 +47,7 @@ export function captureAppWidePluginSnapshot(
  * re-importing the same URL (same pluginId + bundleChecksum, e.g. after a
  * disable/re-enable cycle) resolves instantly from cache WITHOUT re-running
  * the module's top-level registration calls, which would otherwise leave the
- * plugin's stylesheets and settings tab missing until a full page reload
+ * plugin's stylesheets, settings tab, and footer widgets missing until a full page reload
  * resets the module cache. Mirrors
  * clusters/plugins/pluginAssetSnapshot.ts's restorePluginAssetSnapshot for
  * the cluster-scoped registries. Returns true if a matching snapshot was
@@ -51,6 +64,8 @@ export function restoreAppWidePluginSnapshot(
     pluginStylesheetRegistry.registerStylesheets(pluginId, snapshot.stylesheets);
   if (snapshot.settingsTab)
     pluginSettingsRegistry.registerSettingsTab(pluginId, snapshot.settingsTab);
+  if (snapshot.footerWidget)
+    pluginFooterRegistry.registerFooterWidget(pluginId, snapshot.footerWidget);
 
   return true;
 }

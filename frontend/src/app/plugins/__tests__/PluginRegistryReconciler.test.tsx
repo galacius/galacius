@@ -10,6 +10,8 @@ const unregisterStylesheetsMock = vi.hoisted(() => vi.fn());
 const ensurePluginStylesheetMock = vi.hoisted(() => vi.fn());
 const getRegisteredSettingsPluginIdsMock = vi.hoisted(() => vi.fn());
 const unregisterSettingsTabMock = vi.hoisted(() => vi.fn());
+const getRegisteredFooterPluginIdsMock = vi.hoisted(() => vi.fn());
+const unregisterFooterWidgetMock = vi.hoisted(() => vi.fn());
 const restoreAppWidePluginSnapshotMock = vi.hoisted(() => vi.fn());
 const captureAppWidePluginSnapshotMock = vi.hoisted(() => vi.fn());
 
@@ -29,6 +31,13 @@ vi.mock("../hooks/registry/settings/pluginSettingsRegistry", () => ({
   pluginSettingsRegistry: {
     getRegisteredPluginIds: getRegisteredSettingsPluginIdsMock,
     unregisterSettingsTab: unregisterSettingsTabMock,
+  },
+}));
+
+vi.mock("../hooks/registry/footer/pluginFooterRegistry", () => ({
+  pluginFooterRegistry: {
+    getRegisteredPluginIds: getRegisteredFooterPluginIdsMock,
+    unregisterFooterWidget: unregisterFooterWidgetMock,
   },
 }));
 
@@ -52,6 +61,7 @@ describe("PluginRegistryReconciler", () => {
     ensurePluginStylesheetMock.mockResolvedValue(undefined);
     getRegisteredPluginIdsMock.mockReturnValue([]);
     getRegisteredSettingsPluginIdsMock.mockReturnValue([]);
+    getRegisteredFooterPluginIdsMock.mockReturnValue([]);
     restoreAppWidePluginSnapshotMock.mockReturnValue(false);
   });
 
@@ -101,6 +111,18 @@ describe("PluginRegistryReconciler", () => {
 
     expect(unregisterSettingsTabMock).toHaveBeenCalledWith("kube");
     expect(unregisterSettingsTabMock).not.toHaveBeenCalledWith("helm");
+  });
+
+  it("unregisters footer widgets for plugins that are disabled/removed", () => {
+    useGetInstalledPluginsMock.mockReturnValue({
+      readyPlugins: [{ pluginId: "helm", bundleChecksum: "abc123" }],
+    });
+    getRegisteredFooterPluginIdsMock.mockReturnValue(["helm", "kube"]);
+
+    render(<PluginRegistryReconciler />);
+
+    expect(unregisterFooterWidgetMock).toHaveBeenCalledWith("kube");
+    expect(unregisterFooterWidgetMock).not.toHaveBeenCalledWith("helm");
   });
 
   it("captures a snapshot after a fresh import and skips it when a snapshot was restored", async () => {
