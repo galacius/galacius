@@ -1,5 +1,6 @@
 import { FC, useEffect } from "react";
 import { useGetInstalledPlugins } from "../marketplace/hooks/data-access/useGetInstalledPlugins";
+import { pluginFooterRegistry } from "./hooks/registry/footer/pluginFooterRegistry";
 import { pluginSettingsRegistry } from "./hooks/registry/settings/pluginSettingsRegistry";
 import { pluginStylesheetRegistry } from "./hooks/registry/stylesheet/pluginStylesheetRegistry";
 import {
@@ -61,6 +62,9 @@ export const PluginRegistryReconciler: FC = () => {
     }
     for (const id of pluginSettingsRegistry.getRegisteredPluginIds()) {
       if (!readyIds.has(id)) pluginSettingsRegistry.unregisterSettingsTab(id);
+    }
+    for (const id of pluginFooterRegistry.getRegisteredPluginIds()) {
+      if (!readyIds.has(id)) pluginFooterRegistry.unregisterFooterWidget(id);
     }
   }, [readyPlugins]);
 

@@ -1,10 +1,12 @@
 // Explicit allowlist, not `export *` — several lucide-react icon names collide with
 // existing shadcn atom/component exports (e.g. Badge, Sheet, Table, Donut).
 export {
+  Activity as ActivityIcon,
   AppWindowIcon,
   ArrowLeftRightIcon,
   ArrowUpCircleIcon,
   ArrowUpIcon,
+  Battery as BatteryIcon,
   BellIcon,
   BoxesIcon,
   CheckCircle2Icon,
@@ -34,6 +36,7 @@ export {
   FolderSyncIcon,
   FrownIcon,
   GaugeIcon,
+  GripVerticalIcon,
   HardDriveIcon,
   HouseIcon,
   InfoIcon,
@@ -46,6 +49,7 @@ export {
   LockIcon,
   LockOpenIcon,
   Maximize2Icon,
+  MemoryStick as MemoryStickIcon,
   Minimize2Icon,
   MinusIcon,
   MoreVerticalIcon,
@@ -78,6 +82,7 @@ export {
   TerminalIcon,
   TimerIcon,
   Trash2Icon,
+  TrendingUp as TrendingUpIcon,
   TriangleAlertIcon,
   UserRoundIcon,
   WebhookIcon,

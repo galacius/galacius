@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/galacius/galacius/internal/storage"
 	"github.com/galacius/galacius/packages/core/kube/dto"
 )
 
@@ -123,8 +124,14 @@ func (pl *PluginLoader) Launch(ctx context.Context, kubeconfigPath string) error
 	pl.mu.Lock()
 	hostGRPCPort := pl.hostGRPCPort
 	pl.mu.Unlock()
+	// GALACIUS_ROOT_DIR mirrors the host's own resolved storage root
+	// (storage.Dir() already accounts for dev vs. production mode), so
+	// plugins persist their per-plugin data (e.g. settings.json) alongside
+	// the host's data instead of always falling back to their own
+	// production-only default of ~/.galacius.
+	cmd.Env = append(os.Environ(), fmt.Sprintf("GALACIUS_ROOT_DIR=%s", storage.Dir()))
 	if hostGRPCPort > 0 {
-		cmd.Env = append(os.Environ(), fmt.Sprintf("GALACIUS_HOST_GRPC_PORT=%d", hostGRPCPort))
+		cmd.Env = append(cmd.Env, fmt.Sprintf("GALACIUS_HOST_GRPC_PORT=%d", hostGRPCPort))
 	}
 
 	// Log the command being launched for troubleshooting

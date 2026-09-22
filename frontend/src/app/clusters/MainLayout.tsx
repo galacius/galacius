@@ -1,11 +1,12 @@
 import { NavItem } from "@galacius/core";
 import { ErrorBoundary, renderErrorToast } from "@galacius/design-system";
-import { FC, lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { FC, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useGetInstalledPlugins } from "../marketplace/hooks/data-access/useGetInstalledPlugins";
 import {
   formatForbiddenNamespaces,
   useCatchForbiddenResource,
 } from "../shared/hooks/async-events/useCatchForbiddenResource";
+import { ActiveResourceView } from "./ActiveResourceView";
 import { isPluginMounted, shouldResetActiveResource } from "./MainLayout.utils";
 import { MainLayoutProvider } from "./MainLayoutContext";
 import { useGetDefaultNamespaces } from "./modules/base/namespaces/hooks/data-access/useGetDefaultNamespaces";
@@ -19,194 +20,25 @@ import { usePluginNavEntries } from "./plugins/hooks/registry/nav/usePluginNavEn
 import { pluginTrayRegistry } from "./plugins/hooks/registry/tray/pluginTrayRegistry";
 import { usePluginTrayFamilies } from "./plugins/hooks/registry/tray/usePluginTrayFamilies";
 import { pluginViewRegistry } from "./plugins/hooks/registry/view/pluginViewRegistry";
-import { PluginEventsSubscriber } from "./plugins/PluginEventsSubscriber";
+import { PluginDisabledSubscriber } from "./plugins/PluginDisabledSubscriber";
 import { PluginResourceView } from "./plugins/PluginResourceView";
 import { DetailBlock } from "./shared/components/details/DetailBlock";
 import { NamespaceMultiSelect } from "./shared/components/NamespaceMultiSelect";
 import { UnifiedTrayOutlet } from "./shared/components/trays/unified/UnifiedTrayOutlet";
 import { unifiedTrayRegistry } from "./shared/components/trays/unified/unifiedTrayRegistry";
 
-const PodsView = lazy(() =>
-  import("./modules/workloads/pods/PodsView").then((m) => ({
-    default: m.PodsView,
-  }))
-);
-const DeploymentsView = lazy(() =>
-  import("./modules/workloads/deployments/DeploymentsView").then((m) => ({
-    default: m.DeploymentsView,
-  }))
-);
-const ServicesView = lazy(() =>
-  import("./modules/networks/services/ServicesView").then((m) => ({
-    default: m.ServicesView,
-  }))
-);
-const NodesView = lazy(() =>
-  import("./modules/base/nodes/NodesView").then((m) => ({
-    default: m.NodesView,
-  }))
-);
-const NamespacesView = lazy(() =>
-  import("./modules/base/namespaces/NamespacesView").then((m) => ({
-    default: m.NamespacesView,
-  }))
-);
-const DaemonSetsView = lazy(() =>
-  import("./modules/workloads/daemonsets/DaemonSetsView").then((m) => ({
-    default: m.DaemonSetsView,
-  }))
-);
-const ReplicaSetsView = lazy(() =>
-  import("./modules/workloads/replicasets/ReplicaSetsView").then((m) => ({
-    default: m.ReplicaSetsView,
-  }))
-);
-const ConfigMapsView = lazy(() =>
-  import("./modules/configs/configmaps/ConfigMapsView").then((m) => ({
-    default: m.ConfigMapsView,
-  }))
-);
-const EndpointSlicesView = lazy(() =>
-  import("./modules/networks/endpointslices/EndpointSlicesView").then((m) => ({
-    default: m.EndpointSlicesView,
-  }))
-);
-const EndpointsView = lazy(() =>
-  import("./modules/networks/endpoints/EndpointsView").then((m) => ({
-    default: m.EndpointsView,
-  }))
-);
-const StatefulSetsView = lazy(() =>
-  import("./modules/workloads/statefulsets/StatefulSetsView").then((m) => ({
-    default: m.StatefulSetsView,
-  }))
-);
-const JobsView = lazy(() =>
-  import("./modules/workloads/jobs/JobsView").then((m) => ({
-    default: m.JobsView,
-  }))
-);
-const CronJobsView = lazy(() =>
-  import("./modules/workloads/cronjobs/CronJobsView").then((m) => ({
-    default: m.CronJobsView,
-  }))
-);
-const SecretsView = lazy(() =>
-  import("./modules/configs/secrets/SecretsView").then((m) => ({
-    default: m.SecretsView,
-  }))
-);
-const ResourceQuotasView = lazy(() =>
-  import("./modules/configs/resourcequotas/ResourceQuotasView").then((m) => ({
-    default: m.ResourceQuotasView,
-  }))
-);
-const LimitRangesView = lazy(() =>
-  import("./modules/configs/limitranges/LimitRangesView").then((m) => ({
-    default: m.LimitRangesView,
-  }))
-);
-const HPAView = lazy(() =>
-  import("./modules/configs/hpas/HPAView").then((m) => ({
-    default: m.HPAView,
-  }))
-);
-const PodDisruptionBudgetsView = lazy(() =>
-  import("./modules/configs/pdbs/PodDisruptionBudgetsView").then((m) => ({
-    default: m.PodDisruptionBudgetsView,
-  }))
-);
-const ValidatingWebhookConfigsView = lazy(() =>
-  import("./modules/configs/validatingwebhookconfigs/ValidatingWebhookConfigsView").then((m) => ({
-    default: m.ValidatingWebhookConfigsView,
-  }))
-);
-const IngressesView = lazy(() =>
-  import("./modules/networks/ingresses/IngressesView").then((m) => ({
-    default: m.IngressesView,
-  }))
-);
-const IngressClassesView = lazy(() =>
-  import("./modules/networks/ingressclasses/IngressClassesView").then((m) => ({
-    default: m.IngressClassesView,
-  }))
-);
-const NetworkPoliciesView = lazy(() =>
-  import("./modules/networks/networkpolicies/NetworkPoliciesView").then((m) => ({
-    default: m.NetworkPoliciesView,
-  }))
-);
-const PortForwardingView = lazy(() =>
-  import("./modules/networks/portforwarding/PortForwardingView").then((m) => ({
-    default: m.PortForwardingView,
-  }))
-);
-const PersistentVolumeClaimsView = lazy(() =>
-  import("./modules/storages/pvcs/PersistentVolumeClaimsView").then((m) => ({
-    default: m.PersistentVolumeClaimsView,
-  }))
-);
-const PersistentVolumesView = lazy(() =>
-  import("./modules/storages/pvs/PersistentVolumesView").then((m) => ({
-    default: m.PersistentVolumesView,
-  }))
-);
-const ServiceAccountsView = lazy(() =>
-  import("./modules/accessControls/serviceaccounts/ServiceAccountsView").then((m) => ({
-    default: m.ServiceAccountsView,
-  }))
-);
-const ClusterRolesView = lazy(() =>
-  import("./modules/accessControls/clusterroles/ClusterRolesView").then((m) => ({
-    default: m.ClusterRolesView,
-  }))
-);
-const RolesView = lazy(() =>
-  import("./modules/accessControls/roles/RolesView").then((m) => ({
-    default: m.RolesView,
-  }))
-);
-const ClusterRoleBindingsView = lazy(() =>
-  import("./modules/accessControls/clusterrolebindings/ClusterRoleBindingsView").then((m) => ({
-    default: m.ClusterRoleBindingsView,
-  }))
-);
-const RoleBindingsView = lazy(() =>
-  import("./modules/accessControls/rolebindings/RoleBindingsView").then((m) => ({
-    default: m.RoleBindingsView,
-  }))
-);
-const StorageClassesView = lazy(() =>
-  import("./modules/storages/storageclasses/StorageClassesView").then((m) => ({
-    default: m.StorageClassesView,
-  }))
-);
-const EventsView = lazy(() =>
-  import("./modules/base/events/EventsView").then((m) => ({
-    default: m.EventsView,
-  }))
-);
-const PriorityClassesView = lazy(() =>
-  import("./modules/configs/priorityclasses/PriorityClassesView").then((m) => ({
-    default: m.PriorityClassesView,
-  }))
-);
-const LeasesView = lazy(() =>
-  import("./modules/configs/leases/LeasesView").then((m) => ({
-    default: m.LeasesView,
-  }))
-);
-const OverviewView = lazy(() =>
-  import("./modules/OverviewView").then((m) => ({
-    default: m.OverviewView,
-  }))
-);
 interface MainLayoutProps {
   activeContext: string;
   onOpenMarketplace: () => void;
 }
 
 export const MainLayout: FC<MainLayoutProps> = ({ activeContext, onOpenMarketplace }) => {
+  // Bounds the unified tray's portal container so it stays within MainLayout's
+  // own viewport instead of the whole document body — otherwise the tray's
+  // fixed-to-body positioning overlaps AppFooter, which is a sibling of
+  // MainLayout, not a descendant of it.
+  const trayContainerRef = useRef<HTMLDivElement>(null);
+
   const [activeResource, setActiveResource] = useState<ViewType>("overview");
   const [openGroups, setOpenGroups] = useState<Set<string>>(
     () => new Set(["workloads", "network", "config", "storage", "access-control"])
@@ -344,33 +176,39 @@ export const MainLayout: FC<MainLayoutProps> = ({ activeContext, onOpenMarketpla
     namespaces,
   });
 
-  function handleNamespacesChange(ns: string[]) {
-    setNamespaces(ns);
-    setActiveNamespaces(ns);
-  }
+  const handleNamespacesChange = useCallback(
+    (ns: string[]) => {
+      setNamespaces(ns);
+      setActiveNamespaces(ns);
+    },
+    [setActiveNamespaces]
+  );
 
-  function toggleGroup(id: string) {
+  const toggleGroup = useCallback((id: string) => {
     setOpenGroups((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
-  }
+  }, []);
 
-  function handleSelectItem(item: NavItem<ViewType>) {
-    if (item.view) {
-      setActiveResource(item.view);
-      const forbiddenNamespaces = forbiddenResources.get(item.view);
-      if (forbiddenNamespaces) {
-        const label =
-          mergedResourceLabels[item.view as keyof typeof mergedResourceLabels] ?? item.view;
-        renderErrorToast({
-          title: `Access denied: cannot list ${label}${formatForbiddenNamespaces(forbiddenNamespaces)}`,
-        });
+  const handleSelectItem = useCallback(
+    (item: NavItem<ViewType>) => {
+      if (item.view) {
+        setActiveResource(item.view);
+        const forbiddenNamespaces = forbiddenResources.get(item.view);
+        if (forbiddenNamespaces) {
+          const label =
+            mergedResourceLabels[item.view as keyof typeof mergedResourceLabels] ?? item.view;
+          renderErrorToast({
+            title: `Access denied: cannot list ${label}${formatForbiddenNamespaces(forbiddenNamespaces)}`,
+          });
+        }
       }
-    }
-  }
+    },
+    [forbiddenResources, mergedResourceLabels]
+  );
 
   return (
     <MainLayoutProvider
@@ -379,9 +217,10 @@ export const MainLayout: FC<MainLayoutProps> = ({ activeContext, onOpenMarketpla
       namespaces={namespaces}
       onNamespacesChange={handleNamespacesChange}
       onNavigateToView={setActiveResource}
-      className="flex h-full min-w-0 flex-1 overflow-hidden"
+      className="relative flex h-full min-w-0 flex-1 overflow-hidden"
+      containerRef={trayContainerRef}
     >
-      <PluginEventsSubscriber />
+      <PluginDisabledSubscriber />
 
       {/* Sidebar */}
       <NavSidebar
@@ -408,43 +247,11 @@ export const MainLayout: FC<MainLayoutProps> = ({ activeContext, onOpenMarketpla
         <main className="flex-1 overflow-auto p-4">
           <ErrorBoundary>
             <Suspense fallback={<div className="p-4 text-sm text-muted-foreground">Loading…</div>}>
-              {activeResource === "overview" && (
-                <OverviewView onNavigateToView={setActiveResource} />
-              )}
-              {activeResource === "pods" && <PodsView />}
-              {activeResource === "deployments" && <DeploymentsView />}
-              {activeResource === "daemonsets" && <DaemonSetsView />}
-              {activeResource === "statefulsets" && <StatefulSetsView />}
-              {activeResource === "jobs" && <JobsView />}
-              {activeResource === "cronjobs" && <CronJobsView />}
-              {activeResource === "replicasets" && <ReplicaSetsView />}
-              {activeResource === "configmaps" && <ConfigMapsView />}
-              {activeResource === "secrets" && <SecretsView />}
-              {activeResource === "resourcequotas" && <ResourceQuotasView />}
-              {activeResource === "limitranges" && <LimitRangesView />}
-              {activeResource === "hpa" && <HPAView />}
-              {activeResource === "pdbs" && <PodDisruptionBudgetsView />}
-              {activeResource === "validatingwebhookconfigs" && <ValidatingWebhookConfigsView />}
-              {activeResource === "ingresses" && <IngressesView />}
-              {activeResource === "ingressclasses" && <IngressClassesView />}
-              {activeResource === "networkpolicies" && <NetworkPoliciesView />}
-              {activeResource === "portforwarding" && <PortForwardingView />}
-              {activeResource === "pvcs" && <PersistentVolumeClaimsView />}
-              {activeResource === "pvs" && <PersistentVolumesView />}
-              {activeResource === "storageclasses" && <StorageClassesView />}
-              {activeResource === "endpointslices" && <EndpointSlicesView />}
-              {activeResource === "endpoints" && <EndpointsView />}
-              {activeResource === "services" && <ServicesView />}
-              {activeResource === "nodes" && <NodesView />}
-              {activeResource === "namespaces" && <NamespacesView />}
-              {activeResource === "serviceaccounts" && <ServiceAccountsView />}
-              {activeResource === "clusterroles" && <ClusterRolesView />}
-              {activeResource === "roles" && <RolesView />}
-              {activeResource === "clusterrolebindings" && <ClusterRoleBindingsView />}
-              {activeResource === "rolebindings" && <RoleBindingsView />}
-              {activeResource === "priorityclasses" && <PriorityClassesView key={activeContext} />}
-              {activeResource === "leases" && <LeasesView />}
-              {activeResource === "events" && <EventsView />}
+              <ActiveResourceView
+                activeResource={activeResource}
+                activeContext={activeContext}
+                onNavigateToView={setActiveResource}
+              />
 
               {/* Every READY or INSTALLING plugin stays mounted (hidden when inactive)
                   so a READY plugin's own PluginView can register its nav entry
@@ -464,7 +271,7 @@ export const MainLayout: FC<MainLayoutProps> = ({ activeContext, onOpenMarketpla
 
             <DetailBlock onNavigateToPortForwarding={() => setActiveResource("portforwarding")} />
 
-            <UnifiedTrayOutlet registry={mergedTrayRegistry} />
+            <UnifiedTrayOutlet registry={mergedTrayRegistry} containerRef={trayContainerRef} />
           </ErrorBoundary>
         </main>
       </div>

@@ -75,8 +75,18 @@ export const PluginResourceView: FC<PluginResourceViewProps> = ({
           await import(/* @vite-ignore */ pluginAssetUrl);
           capturePluginAssetSnapshot(pluginId, cacheVersion);
         }
+
+        // A plugin that only contributes app-wide features (footer widget,
+        // settings tab, event handlers) and no per-resource view is valid —
+        // e.g. resources-monitor. Importing its bundle above already ran
+        // those registrations as a side effect; there's simply nothing to
+        // render here, which is not a crash.
         const assets = pluginViewRegistry.getViewAssets().filter((a) => a.pluginId === pluginId);
-        if (!assets.length) throw new Error(`Plugin ${pluginId} did not register a view`);
+        if (!assets.length) {
+          const NoViews: FC<PluginViewsProps> = () => null;
+          return { default: NoViews };
+        }
+
         const stylesheets = assets
           .map((a) => a.stylesheet)
           .filter((s): s is Promise<{ default: string }> => !!s);

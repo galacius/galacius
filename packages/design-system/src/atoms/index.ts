@@ -9,6 +9,7 @@ export * from "./drawer";
 export * from "./dropdown-menu";
 export * from "./icon";
 export * from "./input";
+export * from "./popover";
 export * from "./scroll-area";
 export * from "./select";
 export * from "./separator";

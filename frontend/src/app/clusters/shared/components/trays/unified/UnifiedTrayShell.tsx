@@ -9,7 +9,7 @@ import {
   TabsContent,
   TerminalIcon,
 } from "@galacius/design-system";
-import { FC, useCallback, useMemo } from "react";
+import { FC, RefObject, useCallback, useMemo } from "react";
 import { TrayTabBar } from "../TrayTabBar";
 import { useUnifiedTray } from "./UnifiedTrayContext";
 import type { UnifiedTrayContentComponent, UnifiedTrayTab } from "./UnifiedTrayTypes";
@@ -37,9 +37,14 @@ function getTabLabelAndIcon(tab: UnifiedTrayTab) {
 
 export interface UnifiedTrayShellProps {
   registry: Record<string, UnifiedTrayContentComponent>;
+  // Bounds the tray's portal to MainLayout's own DOM subtree instead of
+  // document.body, so its viewport-relative positioning stays inside
+  // MainLayout and never overlaps AppFooter (a sibling of MainLayout, not a
+  // descendant it would otherwise be naturally bounded by).
+  containerRef?: RefObject<HTMLDivElement | null>;
 }
 
-export const UnifiedTrayShell: FC<UnifiedTrayShellProps> = ({ registry }) => {
+export const UnifiedTrayShell: FC<UnifiedTrayShellProps> = ({ registry, containerRef }) => {
   const { tabs, activeTabId, snapPoint, setActiveTab, closeTab, closeAll, setSnapPoint } =
     useUnifiedTray();
 
@@ -62,8 +67,8 @@ export const UnifiedTrayShell: FC<UnifiedTrayShellProps> = ({ registry }) => {
 
   return (
     <Drawer open={tabs.length > 0} modal={false} disablePointerDismissal>
-      <DrawerPortal>
-        <DrawerViewport>
+      <DrawerPortal container={containerRef}>
+        <DrawerViewport className="absolute">
           <DrawerPopup className={heightClass}>
             <DrawerContent>
               <TrayTabBar

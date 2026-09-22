@@ -1,22 +1,20 @@
 import {
   Badge,
-  Button,
   cn,
   ConfirmationModal,
-  EyeIcon,
-  EyeOffIcon,
-  Loader2Icon,
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-  Trash2Icon,
+  TruncatedText,
 } from "@galacius/design-system";
-import { FC, useMemo, useState } from "react";
+import { FC, useCallback, useMemo, useState } from "react";
 import { PluginManifest } from "../hooks/data-access/useGetPluginsFromMarketplace";
 import { formatBytes } from "../utils/formatBytes";
 import { pluginLogoUrl } from "../utils/pluginLogoUrl";
 import { compareVersions } from "../utils/semver";
-import { DownloadProgressIndicator } from "./DownloadProgressIndicator";
+import { PluginCardActions } from "./PluginCardActions";
+import { PluginCardFooter } from "./PluginCardFooter";
+import { PluginCardMetadata } from "./PluginCardMetadata";
 import { PluginLogo } from "./PluginLogo";
 
 // Keys match Manifest.os (Go GOOS values); labels are the human-readable names shown in chips.
@@ -85,7 +83,7 @@ export const PluginCard: FC<PluginCardProps> = ({
   const isPluginDisabled = installStatus === "DISABLED";
   const isVerifying = installStatus === "INSTALLING";
 
-  const handleRemoveClick = async () => {
+  const handleRemoveClick = useCallback(async () => {
     try {
       await onRemove?.(plugin.id);
       setIsRemoveDialogOpen(false);
@@ -93,9 +91,9 @@ export const PluginCard: FC<PluginCardProps> = ({
       // Error is logged in the hook, dialog stays open to let user retry
       console.error("Failed to remove plugin:", error);
     }
-  };
+  }, [onRemove, plugin.id]);
 
-  const handleDisableClick = async () => {
+  const handleDisableClick = useCallback(async () => {
     try {
       await onDisable?.(plugin.id);
       setIsDisableDialogOpen(false);
@@ -103,16 +101,16 @@ export const PluginCard: FC<PluginCardProps> = ({
       // Error is logged in the hook, dialog stays open to let user retry
       console.error("Failed to disable plugin:", error);
     }
-  };
+  }, [onDisable, plugin.id]);
 
-  const handleEnableClick = async () => {
+  const handleEnableClick = useCallback(async () => {
     try {
       await onEnable?.(plugin.id);
     } catch (error) {
       // Error is logged in the hook
       console.error("Failed to enable plugin:", error);
     }
-  };
+  }, [onEnable, plugin.id]);
 
   // Total download size (bundle + binary) — matches what actually lands on
   // disk, unlike plugin.bundle.size alone which is just the JS bundle asset.
@@ -158,54 +156,16 @@ export const PluginCard: FC<PluginCardProps> = ({
               )}
             </div>
             {(installStatus === "READY" || installStatus === "CRASHED" || isPluginDisabled) && (
-              <>
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() =>
-                          isPluginDisabled ? handleEnableClick() : setIsDisableDialogOpen(true)
-                        }
-                        disabled={isDisabling || isEnabling}
-                        aria-label={isPluginDisabled ? "Enable plugin" : "Disable plugin"}
-                      >
-                        {isDisabling || isEnabling ? (
-                          <Loader2Icon className="size-4 animate-spin" />
-                        ) : isPluginDisabled ? (
-                          <EyeOffIcon className="size-4" />
-                        ) : (
-                          <EyeIcon className="size-4" />
-                        )}
-                      </Button>
-                    }
-                  />
-                  <TooltipContent>
-                    {isPluginDisabled ? "Enable plugin" : "Disable plugin"}
-                  </TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setIsRemoveDialogOpen(true)}
-                        disabled={isRemoving}
-                        aria-label="Remove plugin"
-                      >
-                        {isRemoving ? (
-                          <Loader2Icon className="size-4 animate-spin" />
-                        ) : (
-                          <Trash2Icon className="size-4" />
-                        )}
-                      </Button>
-                    }
-                  />
-                  <TooltipContent>Remove plugin</TooltipContent>
-                </Tooltip>
-              </>
+              <PluginCardActions
+                isPluginDisabled={isPluginDisabled}
+                isDisabling={isDisabling}
+                isEnabling={isEnabling}
+                isRemoving={isRemoving}
+                onEnableOrDisableClick={() =>
+                  isPluginDisabled ? handleEnableClick() : setIsDisableDialogOpen(true)
+                }
+                onRemoveClick={() => setIsRemoveDialogOpen(true)}
+              />
             )}
           </div>
         </div>
@@ -215,29 +175,22 @@ export const PluginCard: FC<PluginCardProps> = ({
       <div className={cn("pointer-events-none", isPluginDisabled && "opacity-50")}>
         {/* Description */}
         <div className="border-b border-border px-4 py-3">
-          <p className="text-body text-muted-foreground">{plugin.description}</p>
+          <TruncatedText
+            text={plugin.description}
+            lines={2}
+            className="text-body pointer-events-auto min-h-[2lh] text-muted-foreground"
+            tooltipClassName="max-w-xs"
+          />
         </div>
 
         {/* Metadata */}
         <div className="border-b border-border px-4 py-3">
           <div className="text-caption flex items-center justify-between text-muted-foreground">
-            {installStatus === "INSTALLING" && !installedVersion ? (
-              <>
-                <div className="h-4 w-24 animate-pulse rounded-sm bg-muted" />
-                <div className="h-4 w-12 animate-pulse rounded-sm bg-muted" />
-              </>
-            ) : (
-              <>
-                <div>
-                  {installedVersion
-                    ? `v${installedVersion}`
-                    : installStatus === "READY"
-                      ? "Installed (version unknown)"
-                      : "Not installed"}
-                </div>
-                <div>{installedSize ? formatBytes(installedSize) : null}</div>
-              </>
-            )}
+            <PluginCardMetadata
+              installStatus={installStatus}
+              installedVersion={installedVersion}
+              installedSize={installedSize}
+            />
           </div>
         </div>
 
@@ -264,48 +217,22 @@ export const PluginCard: FC<PluginCardProps> = ({
 
       {/* Footer with CTA button */}
       <div className="border-t border-border px-4 py-3">
-        {isPluginDisabled ? (
-          <div className="text-sm text-muted-foreground">Plugin disabled</div>
-        ) : isDisabled ? (
-          <div className="text-sm text-muted-foreground">
-            Requires app {plugin.minimumHostVersion}–{plugin.maximumHostVersion} (you have{" "}
-            {hostVersion})
-          </div>
-        ) : (
-          <>
-            <Button
-              onClick={() => {
-                if (installStatus === "NOT_INSTALLED") onInstall?.();
-                else if (installStatus === "READY") {
-                  if (updateAvailable) onUpdate?.();
-                } else if (installStatus === "CRASHED") onRetry?.();
-              }}
-              disabled={
-                installStatus === "INSTALLING" || (installStatus === "READY" && !updateAvailable)
-              }
-              className="w-full"
-              variant={installStatus === "CRASHED" ? "destructive" : "default"}
-            >
-              {installStatus === "NOT_INSTALLED" &&
-                `Install v${plugin.version} (${marketplacePluginSize})`}
-              {installStatus === "INSTALLING" && "Downloading..."}
-              {installStatus === "READY" &&
-                (updateAvailable
-                  ? `Update v${plugin.version} (${marketplacePluginSize})`
-                  : "Installed")}
-              {installStatus === "CRASHED" && "Retry"}
-              {installStatus === "INCOMPATIBLE" && "Incompatible"}
-            </Button>
-
-            <div className="mt-2">
-              <DownloadProgressIndicator
-                progress={installProgress}
-                isVerifying={isVerifying}
-                isVisible={installStatus === "INSTALLING"}
-              />
-            </div>
-          </>
-        )}
+        <PluginCardFooter
+          isPluginDisabled={isPluginDisabled}
+          isIncompatible={isDisabled}
+          minimumHostVersion={plugin.minimumHostVersion}
+          maximumHostVersion={plugin.maximumHostVersion}
+          hostVersion={hostVersion}
+          installStatus={installStatus}
+          updateAvailable={updateAvailable}
+          installLabel={`Install v${plugin.version} (${marketplacePluginSize})`}
+          updateLabel={`Update v${plugin.version} (${marketplacePluginSize})`}
+          installProgress={installProgress}
+          isVerifying={isVerifying}
+          onInstall={onInstall}
+          onUpdate={onUpdate}
+          onRetry={onRetry}
+        />
       </div>
 
       <ConfirmationModal

@@ -28,7 +28,7 @@ pnpm build:app:fe        # build:ds + frontend build only (no Wails binary)
 
 ```bash
 pnpm format              # prettier --write across ts/tsx/js/json/css/md/yml
-pnpm lint:fe              # eslint frontend/src design-system/src packages/core/frontend/src
+pnpm lint:fe              # eslint frontend/src packages/design-system/src packages/core/frontend/src
 pnpm lint:be              # go vet + staticcheck for ./internal/... and the packages/core module
 ```
 
@@ -90,7 +90,7 @@ Plugins are **fully standalone Go modules** (e.g. in `galacius-plugins` repo, ow
 
 **Frontend packages:**
 
-- **`@galacius/core` (pnpm workspace package):** provisioned at `packages/core/frontend/`, exports host-level React hooks (starting with `useResourceLinks`) for plugin frontends to import. Resolved via import map (`frontend/index.html`) and vendor shims (`frontend/public/vendor/galacius/core.js`), same pattern as `@galacius/design-system`. Versioned alongside the host app, not as a stable long-term SDK. See `packages/core/README.md` for rationale and versioning.
+- **`@galacius/core` (pnpm workspace package):** provisioned at `packages/core/frontend/`, exports host-level React hooks (starting with `useResourceLinks`) for plugin frontends to import. Resolved via import map (`frontend/index.html`) and vendor shims (`frontend/public/vendor/galacius/core.js`), same pattern as `@galacius/design-system`. Versioned alongside the host app, not as a stable long-term SDK. See `packages/core/README.md` for rationale and versioning. `appWideAPI` also exposes `registerFooterWidget` (mirroring `registerSettingsTab`), letting a plugin contribute an app-wide footer status-bar widget rendered in `AppFooter.tsx` even before a cluster is connected — first consumed by the `resources-monitor` plugin (`galacius-plugins` repo). See `.claude/memory/plugin_footer_widget_registry.md`.
 
 **Plugin subprocess model:**
 
@@ -98,6 +98,7 @@ Plugins are **fully standalone Go modules** (e.g. in `galacius-plugins` repo, ow
 - The main app still manages process lifecycle (spawn, health checks, restart detection). Host↔plugin push events use a single native gRPC pub/sub service (`packages/core/pb`'s `Plugin` service: `Subscribe(topic) → stream PubSubMessage` / `Publish(topic, payload)`), hosted by `internal/api/grpc` (`hostgrpc.GRPCServerConfig`) — the host publishes on topics like `cluster.context`/`namespaces.active` (`packages/core/util.EventTopic*`), plugins may only publish under their own `plugins.<pluginID>.*` prefix. Plugins authenticate to the host's gRPC server with a per-launch token (`internal/plugin`'s `TokenManager`); the older per-purpose unary RPCs (`GetCapabilities`/`SetClusterContext`/`Invoke`/separate watch streams) have been fully replaced by this generic pub/sub contract.
 - Plugin frontend bundles are loaded dynamically and resolve `react`/`react-dom`/`@galacius/design-system`/`@galacius/core`/`@tanstack/react-query` as bare specifiers against the host's own module instances via import map + vendor shims — avoids duplicate instances that would break React Context or query client isolation.
 - Plugins are installed at runtime from a marketplace (GitHub release manifests); nothing plugin-specific is compiled into `main.go`.
+- Plugin-event dispatch is split: an app-root `PluginEventListener` (`frontend/src/app/plugins/PluginEventListener.tsx`, mounted beside `PluginRegistryReconciler` in `App.tsx`, live pre-cluster-connection) vs. the cluster-scoped `PluginDisabledSubscriber` (`frontend/src/app/clusters/plugins/PluginDisabledSubscriber.tsx`, renamed from `PluginEventsSubscriber`, mounted inside `MainLayout`). A dispatch-time liveness guard (`getHandlerFor(pluginId, eventName)` on `pluginEventRegistry`) prevents a disabled/crashed plugin's stale handler from firing. See `.claude/memory/plugin_footer_widget_registry.md`.
 
 ### Frontend (`frontend/src`)
 
