@@ -15,8 +15,8 @@ export const AppFooter: FC<Props> = ({ activeContext, updateInfo, onUpdateClick 
 
   return (
     <footer className="flex shrink-0 items-center gap-3 border-t bg-background px-3 py-2">
+      {/** Left side */}
       <ProxyServer activeContext={activeContext} />
-      {updateInfo && <Updater updateInfo={updateInfo} onUpdateClick={onUpdateClick} />}
       {footerWidgets.map(({ pluginId, widget }) => (
         <PluginErrorBoundary key={pluginId}>
           <Suspense>
@@ -24,6 +24,11 @@ export const AppFooter: FC<Props> = ({ activeContext, updateInfo, onUpdateClick 
           </Suspense>
         </PluginErrorBoundary>
       ))}
+
+      {/** Right side */}
+      <div className="ml-auto">
+        {updateInfo && <Updater updateInfo={updateInfo} onUpdateClick={onUpdateClick} />}
+      </div>
     </footer>
   );
 };
