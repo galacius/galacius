@@ -431,6 +431,10 @@ When a tooltip inside a fixed/portal element (e.g. a tray with `z-60`) appears b
 
 z-index reference: trays use `z-50`–`z-60`; dropdowns/popovers inside trays use `z-70`; tooltip positioners in tray context should use `z-70`.
 
+## `TruncatedText` multi-line clamping
+
+`TruncatedText` (`design-system/src/components/texts/TruncatedText.tsx`) defaults to single-line `truncate` behavior, but accepts an optional `lines?: number` (2–4; 1 or omitted keeps the old single-line mode) to clamp to N lines instead — `overflowing` then compares `scrollHeight`/`clientHeight` rather than `scrollWidth`/`clientWidth`, so the tooltip with the full text still only appears when the content actually overflows. Line-clamp classes are looked up from a literal `LINE_CLAMP_CLASSES` map (`line-clamp-2`/`-3`/`-4`), not built from a template string, so Tailwind's class scanner can see them. Used by `marketplace/components/PluginCard.tsx` (`lines={2}`, clamps plugin descriptions to a fixed 2-row height for card alignment) and by `PodMetaStrip.tsx` (single-line mode, replacing a local `TruncatedLabel` duplicate) — prefer this component over a bespoke truncate/tooltip implementation.
+
 ## Input `ghost` variant
 
 `design-system/src/atoms/input.tsx` now uses `cva` with two variants:
