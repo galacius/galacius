@@ -924,14 +924,26 @@ func (a *App) EnablePlugin(pluginID string) error {
 		loader.SetHostGRPCPort(a.grpcServerCfg.Port())
 		loader.SetTokenManager(a.grpcServerCfg)
 	}
-	if err := loader.Launch(context.Background(), a.kubeconfigForRelaunch(activeContextName)); err != nil {
-		// Log but don't fail — the plugin is now enabled and will be relaunched on next use
-		log.Printf("plugin %q: launch failed: %v", pluginID, err)
+	launchErr := loader.Launch(context.Background(), a.kubeconfigForRelaunch(activeContextName))
+	if launchErr != nil {
+		log.Printf("plugin %q: launch failed: %v", pluginID, launchErr)
 	}
 
 	// Emit plugin:enabled event (skip if context is invalid, e.g. in tests)
 	if a.ctx != nil {
 		wailsruntime.EventsEmit(a.ctx, "plugin:enabled", pluginID)
+	}
+
+	// The plugin stays enabled (disabled-state entry removed and persisted
+	// above) even if this launch attempt failed — Launch() already left the
+	// loader in CRASHED with its own error detail, and the caller can retry.
+	// But the failure must still be surfaced here: silently swallowing it
+	// left the frontend with no signal to distinguish "just failed to relaunch"
+	// from a stale crash from a previous session, so it masked the plugin as
+	// NOT_INSTALLED and dropped it into "Available" despite the on-disk
+	// install and registered loader still being fully intact.
+	if launchErr != nil {
+		return fmt.Errorf("plugin enabled but failed to launch: %w", launchErr)
 	}
 
 	return nil

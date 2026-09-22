@@ -123,6 +123,13 @@ export const MarketplaceView: FC<{
   const handleEnable = useCallback(
     async (pluginId: string, pluginName: string) => {
       setEnablingIds((prev) => new Set(prev).add(pluginId));
+      // A failed relaunch on enable reports CRASHED, same as a failed install.
+      // Without marking this an "attempted" action, maskTerminalStatus would
+      // treat that CRASHED as stale leftover state and hide the plugin as
+      // NOT_INSTALLED — even though it's still fully installed on disk — which
+      // moves it into "Available" and invites a redundant reinstall on top of
+      // the still-registered loader.
+      setAttemptedInstalls((prev) => new Set(prev).add(pluginId));
       try {
         await enableMutation.mutateAsync({ pluginId });
       } catch (error) {

@@ -616,3 +616,97 @@ func TestDisablePluginAfterShutdownStateReset(t *testing.T) {
 		t.Errorf("expected status DISABLED after DisablePlugin, got %s", statusAfterDisable)
 	}
 }
+
+// TestEnablePluginSurfacesLaunchFailure verifies regression: previously,
+// EnablePlugin swallowed a failed relaunch (only logging it), returning nil.
+// The frontend has no way to distinguish that CRASHED status from a stale
+// crash carried over from a previous session, so it masked the plugin as
+// NOT_INSTALLED and moved it from "Installed" to "Available" even though its
+// on-disk install and registered loader were both still fully intact.
+// EnablePlugin must now return an error when the relaunch fails, so the
+// caller (and the frontend's enable-mutation error handling) can react to it
+// as a genuine failure of *this* action rather than silently swallowing it.
+func TestEnablePluginSurfacesLaunchFailure(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("mock plugin binary is a bash script; not runnable on windows")
+	}
+	tempHome := t.TempDir()
+	t.Setenv("HOME", tempHome)
+	t.Setenv("MARKETPLACE_ENABLED", "true")
+
+	app := NewApp("test")
+
+	pluginID := "helm"
+	pluginDir := filepath.Join(tempHome, ".galacius", "plugins", pluginID)
+	if err := os.MkdirAll(pluginDir, 0755); err != nil {
+		t.Fatalf("failed to create plugin directory: %v", err)
+	}
+
+	binaryName := "plugin-" + pluginID
+	if runtime.GOOS == "windows" {
+		binaryName += ".exe"
+	}
+	binaryPath := filepath.Join(pluginDir, binaryName)
+	// A script that exits immediately without ever printing a READY handshake,
+	// simulating a launch that fails post-start (e.g. crashes, or is killed by
+	// the OS before it can hand off) — Launch() must time out/error and mark
+	// the loader CRASHED.
+	mockScript := "#!/bin/bash\nexit 1\n"
+	if err := os.WriteFile(binaryPath, []byte(mockScript), 0755); err != nil {
+		t.Fatalf("failed to create binary: %v", err)
+	}
+
+	metadata := dto.PluginMetadata{
+		Manifest: dto.Manifest{
+			ID:      pluginID,
+			Name:    "Helm",
+			Version: "1.0.0",
+			Bundle: dto.ManifestAsset{
+				SHA256: "0000000000000000000000000000000000000000000000000000000000000000",
+			},
+		},
+	}
+	metadataPath := filepath.Join(pluginDir, ".plugin-metadata.json")
+	metadataBytes, _ := json.Marshal(metadata)
+	if err := os.WriteFile(metadataPath, metadataBytes, 0644); err != nil {
+		t.Fatalf("failed to write metadata: %v", err)
+	}
+
+	// Restore plugin as disabled
+	app.mu.Lock()
+	app.settings.PluginDisabledState = map[string]bool{
+		pluginID: true,
+	}
+	app.activeContext = ""
+	app.mu.Unlock()
+	app.restoreInstalledPlugins()
+
+	err := app.EnablePlugin(pluginID)
+	if err == nil {
+		t.Fatalf("expected EnablePlugin to return an error when the relaunch fails, got nil")
+	}
+
+	// The plugin must remain enabled (not silently re-disabled) and its
+	// on-disk metadata/loader registration must stay intact — only the
+	// error return signals the caller that this particular relaunch failed.
+	reloadedSettings, loadErr := config.Load()
+	if loadErr != nil {
+		t.Fatalf("failed to reload settings: %v", loadErr)
+	}
+	if reloadedSettings.PluginDisabledState[pluginID] {
+		t.Errorf("expected plugin to remain enabled in persisted settings after a failed relaunch")
+	}
+
+	app.pluginsMu.RLock()
+	loader, exists := app.pluginLoaders[pluginID]
+	app.pluginsMu.RUnlock()
+	if !exists || loader == nil {
+		t.Fatalf("expected plugin loader to remain registered after a failed relaunch")
+	}
+	if loader.Status() != dto.PluginStatusCrashed {
+		t.Errorf("expected status CRASHED after a failed relaunch, got %s", loader.Status())
+	}
+	if _, err := os.Stat(binaryPath); err != nil {
+		t.Errorf("expected on-disk plugin binary to remain untouched after a failed relaunch: %v", err)
+	}
+}
