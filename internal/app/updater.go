@@ -140,12 +140,58 @@ func selectUpdateStrategy(goos string) string {
 	}
 }
 
+// relaunchAfterExit writes a detached helper script that waits for the
+// current process to fully exit (polling `kill -0` on our own PID) before
+// starting the replacement binary, then starts that script (not the binary
+// directly).
+//
+// Without this wait, the caller's subsequent runtime.Quit(a.ctx) races the
+// new instance's Startup(): both galacius processes can briefly run at once.
+// That's only harmless-looking when no plugins are installed — the moment
+// one is, the new instance's launchInstalledPlugins() (internal/app/plugin.go)
+// finds the *old* instance's live plugin subprocess owning the shared
+// per-plugin lock file, and PluginLoader.Launch (internal/plugin/loader.go)
+// treats any live PID it doesn't own as an orphan and kills it out from under
+// the still-running old instance, while the old instance's own Shutdown() is
+// concurrently trying to tear the same plugin down — leaving the plugin (and
+// anything in the UI waiting on its handshake) stuck. Windows is forced to
+// wait already, since it can't overwrite a running .exe (see
+// performWindowsUpdate's tasklist loop); this gives macOS and Linux the same
+// guarantee instead of leaving them exposed to the race.
+func relaunchAfterExit(scriptFileName, bin string, args ...string) error {
+	parts := make([]string, 0, len(args)+1)
+	parts = append(parts, shellQuote(bin))
+	for _, arg := range args {
+		parts = append(parts, shellQuote(arg))
+	}
+	script := fmt.Sprintf(
+		"#!/bin/bash\n"+
+			"while kill -0 %d 2>/dev/null; do sleep 0.2; done\n"+
+			"%s\n"+
+			"rm -f -- \"$0\"\n",
+		os.Getpid(), strings.Join(parts, " "),
+	)
+	scriptPath := filepath.Join(os.TempDir(), scriptFileName)
+	if err := os.WriteFile(scriptPath, []byte(script), 0o700); err != nil {
+		return fmt.Errorf("write relaunch script: %w", err)
+	}
+	return exec.Command("/bin/bash", scriptPath).Start()
+}
+
+// shellQuote wraps s in single quotes for safe interpolation into a
+// generated bash script, escaping any single quotes it contains.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
 // PerformUpdate downloads and installs the new version, then relaunches the
 // app and quits the current instance. Windows has no bash/install-script
 // support, so it downloads the release asset directly and swaps the binary
 // via a detached helper script; macOS runs the bash install script (which
 // handles code-signing); Linux downloads the binary and uses pkexec to run
 // the install-helper with elevated privileges (avoiding TTY issues with sudo).
+// On all three platforms, relaunching the replacement binary is deferred
+// until this process has fully exited (see relaunchAfterExit).
 func (a *App) PerformUpdate(version string) error {
 	// Defense in depth: reject in-app self-update on package-manager-managed installs.
 	// The frontend should disable the "Update Now" button for these, but enforce it here too.
@@ -177,7 +223,7 @@ func (a *App) PerformUpdate(version string) error {
 		// process's original binary to a .backup file and then deleted it, so
 		// os.Executable() (which resolves /proc/self/exe) returns a path that no
 		// longer exists, causing the relaunch to silently fail.
-		if err := exec.Command("/usr/local/bin/galacius").Start(); err != nil {
+		if err := relaunchAfterExit("galacius-relaunch.sh", "/usr/local/bin/galacius"); err != nil {
 			fmt.Fprintf(os.Stderr, "ERROR: failed to relaunch updated app: %v\n", err)
 		}
 		runtime.Quit(a.ctx)
@@ -245,7 +291,7 @@ func (a *App) PerformUpdate(version string) error {
 		return fmt.Errorf("install failed: %w", err)
 	}
 
-	exec.Command("open", "-n", "/Applications/Galacius.app").Start() //nolint:errcheck
+	relaunchAfterExit("galacius-relaunch.sh", "open", "-n", "/Applications/Galacius.app") //nolint:errcheck
 	runtime.Quit(a.ctx)
 	return nil
 }
