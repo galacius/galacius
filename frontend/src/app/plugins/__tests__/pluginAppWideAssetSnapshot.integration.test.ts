@@ -10,49 +10,27 @@ describe("pluginAppWideAssetSnapshot integration (real registry)", () => {
     pluginFooterRegistry.clearRegistry();
   });
 
-  it("does not resurrect footer widget on restore after plugin self-unregisters", () => {
+  it("restores the footer widget after a disable/re-enable cycle", () => {
     const footerWidget = { id: "helm-footer", component: () => null };
 
-    // Step 1: Register a widget
+    // Step 1: Plugin bundle's module-eval registers its footer widget.
     pluginFooterRegistry.registerFooterWidget("helm", footerWidget);
 
-    // Step 2: Capture the snapshot (after first import)
+    // Step 2: Reconciler captures the snapshot right after the fresh import.
     captureAppWidePluginSnapshot("helm", "abc123");
 
-    // Verify widget was captured
-    expect(pluginFooterRegistry.getFooterWidget("helm")).toEqual(footerWidget);
-
-    // Step 3: Plugin self-unregisters the widget at runtime
+    // Step 3: Plugin is disabled — the reconciler unregisters it from the
+    // live registry (the widget disappears from the footer immediately).
     pluginFooterRegistry.unregisterFooterWidget("helm");
-
-    // Verify it's removed from registry
     expect(pluginFooterRegistry.getFooterWidget("helm")).toBeUndefined();
 
-    // Step 4: Simulate a disable/re-enable cycle (restore from snapshot)
-    // The widget should NOT be resurrected because the snapshot was cleared
-    // on unregister
+    // Step 4: Plugin is re-enabled. Re-importing the same bundle URL is a
+    // cache hit (module already evaluated) and doesn't re-run the top-level
+    // registerFooterWidget call, so the reconciler restores from the
+    // snapshot instead.
     const restored = restoreAppWidePluginSnapshot("helm", "abc123");
 
-    // Restore should succeed (checksum matches)
     expect(restored).toBe(true);
-
-    // But the widget should still be unregistered, not resurrected
-    expect(pluginFooterRegistry.getFooterWidget("helm")).toBeUndefined();
-  });
-
-  it("clears snapshot when unregister is called, preventing resurrection", () => {
-    const footerWidget = { id: "plugin-footer", component: () => null };
-
-    // Register and capture
-    pluginFooterRegistry.registerFooterWidget("plugin-a", footerWidget);
-    captureAppWidePluginSnapshot("plugin-a", "v1");
-
-    // Self-unregister
-    pluginFooterRegistry.unregisterFooterWidget("plugin-a");
-    expect(pluginFooterRegistry.getFooterWidget("plugin-a")).toBeUndefined();
-
-    // Restore should not resurrect because snapshot was cleared
-    restoreAppWidePluginSnapshot("plugin-a", "v1");
-    expect(pluginFooterRegistry.getFooterWidget("plugin-a")).toBeUndefined();
+    expect(pluginFooterRegistry.getFooterWidget("helm")).toEqual(footerWidget);
   });
 });

@@ -1,12 +1,10 @@
 import type { PluginFooterWidget } from "@galacius/core";
 
 type Listener = () => void;
-type UnregisterListener = (pluginId: string) => void;
 
 class PluginFooterRegistry {
   private readonly registry = new Map<string, PluginFooterWidget>();
   private readonly listeners = new Set<Listener>();
-  private readonly unregisterListeners = new Set<UnregisterListener>();
 
   private snapshot: Array<{ pluginId: string; widget: PluginFooterWidget }> = [];
 
@@ -17,7 +15,6 @@ class PluginFooterRegistry {
 
   unregisterFooterWidget(pluginId: string): void {
     if (this.registry.delete(pluginId)) {
-      this.notifyUnregister(pluginId);
       this.notify();
     }
   }
@@ -39,11 +36,6 @@ class PluginFooterRegistry {
     return () => this.listeners.delete(listener);
   }
 
-  subscribeFooterWidgetUnregister(listener: UnregisterListener): () => void {
-    this.unregisterListeners.add(listener);
-    return () => this.unregisterListeners.delete(listener);
-  }
-
   clearRegistry(): void {
     if (this.registry.size > 0) {
       this.registry.clear();
@@ -58,12 +50,6 @@ class PluginFooterRegistry {
     }));
     for (const listener of this.listeners) {
       listener();
-    }
-  }
-
-  private notifyUnregister(pluginId: string): void {
-    for (const listener of this.unregisterListeners) {
-      listener(pluginId);
     }
   }
 }

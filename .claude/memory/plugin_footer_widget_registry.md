@@ -26,9 +26,12 @@ event-dispatch path that's live pre-cluster-connection.
   pluginFooterRegistry.ts`) — a module-singleton class (`Map<pluginId, PluginFooterWidget>`), mirroring
   `pluginSettingsRegistry.ts` field-for-field: `registerFooterWidget`/`unregisterFooterWidget`,
   `getFooterWidgets()`/`getFooterWidget(pluginId)`/`getRegisteredPluginIds()`,
-  `subscribeFooterRegistry` (notify listeners), plus one addition settings doesn't have:
-  `subscribeFooterWidgetUnregister`, used by the snapshot mechanism below to invalidate a stale
-  snapshot when a plugin self-unregisters its widget at runtime.
+  `subscribeFooterRegistry` (notify listeners). It used to also carry a
+  `subscribeFooterWidgetUnregister` hook, meant to let the snapshot below invalidate a stale
+  snapshot when a plugin "self-unregisters" its widget at runtime — but `unregisterFooterWidget`'s
+  only real caller was (and is) `PluginRegistryReconciler`'s disable/uninstall cleanup, so every
+  disable wiped the snapshot too, breaking re-enable (see "Reconciliation" below). Removed 2026-09-22;
+  `unregisterFooterWidget` now behaves exactly like `pluginSettingsRegistry.unregisterSettingsTab`.
 - **Consumer hook:** `usePluginFooterWidgets()` (`.../footer/usePluginFooterWidgets.tsx`) —
   `useSyncExternalStore` over `pluginFooterRegistry`'s subscribe/getFooterWidgets, same pattern as the
   settings-tab equivalent.
@@ -56,9 +59,10 @@ this: `captureAppWidePluginSnapshot(pluginId, bundleChecksum)` snapshots whateve
 populated into the three app-wide registries, keyed by pluginId + bundleChecksum; on a later load of
 the same plugin, `restoreAppWidePluginSnapshot` re-populates the registries from the snapshot instead
 of relying on the module re-evaluating, returning `true` if it restored one (the reconciler only
-captures a fresh snapshot when restore returns `false`). The module also subscribes to
-`pluginFooterRegistry`'s `subscribeFooterWidgetUnregister` to clear a stale `footerWidget` off an
-existing snapshot if the plugin self-unregisters at runtime, so a later restore can't resurrect it.
+captures a fresh snapshot when restore returns `false`). The snapshot is otherwise never mutated by a
+disable/uninstall cycle — `PluginRegistryReconciler`'s `unregisterFooterWidget(id)` call only clears
+the live registry (making the widget disappear immediately), leaving the captured snapshot intact so
+the next `restoreAppWidePluginSnapshot` on re-enable brings it right back.
 
 ## Event-listener split and the liveness guard
 

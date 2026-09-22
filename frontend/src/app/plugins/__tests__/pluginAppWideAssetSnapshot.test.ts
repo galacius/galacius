@@ -10,7 +10,6 @@ const getSettingsTabMock = vi.hoisted(() => vi.fn());
 const registerSettingsTabMock = vi.hoisted(() => vi.fn());
 const getFooterWidgetMock = vi.hoisted(() => vi.fn());
 const registerFooterWidgetMock = vi.hoisted(() => vi.fn());
-const subscribeFooterWidgetUnregisterMock = vi.hoisted(() => vi.fn());
 
 vi.mock("../hooks/registry/stylesheet/pluginStylesheetRegistry", () => ({
   pluginStylesheetRegistry: {
@@ -30,14 +29,12 @@ vi.mock("../hooks/registry/footer/pluginFooterRegistry", () => ({
   pluginFooterRegistry: {
     getFooterWidget: getFooterWidgetMock,
     registerFooterWidget: registerFooterWidgetMock,
-    subscribeFooterWidgetUnregister: subscribeFooterWidgetUnregisterMock,
   },
 }));
 
 describe("pluginAppWideAssetSnapshot", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    subscribeFooterWidgetUnregisterMock.mockReturnValue(() => {});
   });
 
   it("returns false when no snapshot has been captured for the plugin", () => {

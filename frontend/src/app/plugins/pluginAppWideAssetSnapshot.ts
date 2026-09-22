@@ -12,16 +12,6 @@ interface PluginAppWideAssetSnapshot {
 
 const snapshots = new Map<string, PluginAppWideAssetSnapshot>();
 
-// Listen to footer widget unregister events and clear stale snapshots.
-// This ensures that if a plugin self-unregisters a widget at runtime,
-// a later restore won't resurrect the stale widget.
-pluginFooterRegistry.subscribeFooterWidgetUnregister((pluginId: string) => {
-  const snapshot = snapshots.get(pluginId);
-  if (snapshot) {
-    snapshot.footerWidget = undefined;
-  }
-});
-
 /**
  * Captures whatever a plugin bundle's module-eval-time registration calls
  * (registerStylesheets/registerSettingsTab/registerFooterWidget) just populated into the app-wide

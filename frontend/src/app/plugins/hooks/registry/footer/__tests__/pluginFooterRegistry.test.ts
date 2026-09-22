@@ -119,38 +119,4 @@ describe("pluginFooterRegistry", () => {
 
     expect(spy).not.toHaveBeenCalled();
   });
-
-  it("notifies unregister listeners with the correct pluginId when a widget is unregistered", () => {
-    pluginFooterRegistry.registerFooterWidget("helm", {
-      id: "helm-footer",
-      component: () => null,
-    });
-    pluginFooterRegistry.registerFooterWidget("kube", {
-      id: "kube-footer",
-      component: () => null,
-    });
-
-    const unregisterListener = vi.fn();
-    pluginFooterRegistry.subscribeFooterWidgetUnregister(unregisterListener);
-
-    pluginFooterRegistry.unregisterFooterWidget("helm");
-
-    expect(unregisterListener).toHaveBeenCalledWith("helm");
-    expect(unregisterListener).toHaveBeenCalledTimes(1);
-  });
-
-  it("unregister listener unsubscribe function removes the listener", () => {
-    pluginFooterRegistry.registerFooterWidget("helm", {
-      id: "helm-footer",
-      component: () => null,
-    });
-
-    const unregisterListener = vi.fn();
-    const unsubscribe = pluginFooterRegistry.subscribeFooterWidgetUnregister(unregisterListener);
-
-    unsubscribe();
-    pluginFooterRegistry.unregisterFooterWidget("helm");
-
-    expect(unregisterListener).not.toHaveBeenCalled();
-  });
 });
