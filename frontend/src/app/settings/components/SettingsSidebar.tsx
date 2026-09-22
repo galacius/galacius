@@ -25,6 +25,8 @@ export const SettingsSidebar: FC<SettingsSidebarProps> = ({ section, onSelect })
   const { data: isPrivateRepoAccess = true } = useIsPrivateRepoAccess();
   const isMarketplaceEnabled = useIsMarketplaceEnabled();
   const pluginTabs = usePluginSettingsTabs();
+  const sortedPluginTabs = [...(pluginTabs ?? [])].sort((a, b) => a.label.localeCompare(b.label));
+
   return (
     <aside className="flex w-56 shrink-0 flex-col overflow-y-auto border-r">
       <div className="flex flex-col gap-0.5 p-2">
@@ -104,22 +106,25 @@ export const SettingsSidebar: FC<SettingsSidebarProps> = ({ section, onSelect })
           </Button>
         )}
 
-        <Divider className="my-1" />
-
-        {pluginTabs?.map((tab) => (
-          <Button
-            key={tab.id}
-            variant="ghost"
-            onClick={() => onSelect(tab.id)}
-            className={cn(
-              "w-full justify-start font-medium",
-              section === tab.id && "bg-secondary text-secondary-foreground"
-            )}
-          >
-            {tab.icon && <tab.icon className="size-4 shrink-0" />}
-            {tab.label}
-          </Button>
-        ))}
+        {!!sortedPluginTabs.length && (
+          <>
+            <Divider className="my-1" />
+            {sortedPluginTabs.map((tab) => (
+              <Button
+                key={tab.id}
+                variant="ghost"
+                onClick={() => onSelect(tab.id)}
+                className={cn(
+                  "w-full justify-start font-medium",
+                  section === tab.id && "bg-secondary text-secondary-foreground"
+                )}
+              >
+                {tab.icon && <tab.icon className="size-4 shrink-0" />}
+                {tab.label}
+              </Button>
+            ))}
+          </>
+        )}
       </div>
     </aside>
   );
