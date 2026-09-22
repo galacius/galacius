@@ -207,6 +207,11 @@ interface MainLayoutProps {
 }
 
 export const MainLayout: FC<MainLayoutProps> = ({ activeContext, onOpenMarketplace }) => {
+  // Bounds the unified tray's portal container so it stays within MainLayout's
+  // own viewport instead of the whole document body — otherwise the tray's
+  // fixed-to-body positioning overlaps AppFooter, which is a sibling of
+  // MainLayout, not a descendant of it.
+  const trayContainerRef = useRef<HTMLDivElement>(null);
   const [activeResource, setActiveResource] = useState<ViewType>("overview");
   const [openGroups, setOpenGroups] = useState<Set<string>>(
     () => new Set(["workloads", "network", "config", "storage", "access-control"])
@@ -379,7 +384,8 @@ export const MainLayout: FC<MainLayoutProps> = ({ activeContext, onOpenMarketpla
       namespaces={namespaces}
       onNamespacesChange={handleNamespacesChange}
       onNavigateToView={setActiveResource}
-      className="flex h-full min-w-0 flex-1 overflow-hidden"
+      className="relative flex h-full min-w-0 flex-1 overflow-hidden"
+      containerRef={trayContainerRef}
     >
       <PluginDisabledSubscriber />
 
@@ -464,7 +470,7 @@ export const MainLayout: FC<MainLayoutProps> = ({ activeContext, onOpenMarketpla
 
             <DetailBlock onNavigateToPortForwarding={() => setActiveResource("portforwarding")} />
 
-            <UnifiedTrayOutlet registry={mergedTrayRegistry} />
+            <UnifiedTrayOutlet registry={mergedTrayRegistry} containerRef={trayContainerRef} />
           </ErrorBoundary>
         </main>
       </div>

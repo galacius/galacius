@@ -1,4 +1,4 @@
-import { createContext, FC, ReactNode, use, useMemo } from "react";
+import { createContext, FC, ReactNode, RefObject, use, useMemo } from "react";
 import { DetailDrawerProvider } from "./shared/components/details/DetailDrawerContext";
 import { UnifiedTrayProvider } from "./shared/components/trays/unified/UnifiedTrayContext";
 
@@ -21,6 +21,7 @@ export const useMainLayoutContext = (): MainLayoutContextValue => {
 interface MainLayoutProviderProps {
   children: ReactNode;
   className?: string;
+  containerRef?: RefObject<HTMLDivElement | null>;
   activeContext: string;
   activeResource: string;
   namespaces: string[];
@@ -31,6 +32,7 @@ interface MainLayoutProviderProps {
 export const MainLayoutProvider: FC<MainLayoutProviderProps> = ({
   children,
   className,
+  containerRef,
   activeContext,
   activeResource,
   namespaces,
@@ -52,7 +54,9 @@ export const MainLayoutProvider: FC<MainLayoutProviderProps> = ({
     <MainLayoutCtx.Provider value={ctxValue}>
       <DetailDrawerProvider>
         <UnifiedTrayProvider>
-          <div className={className}>{children}</div>
+          <div ref={containerRef} className={className}>
+            {children}
+          </div>
         </UnifiedTrayProvider>
       </DetailDrawerProvider>
     </MainLayoutCtx.Provider>
