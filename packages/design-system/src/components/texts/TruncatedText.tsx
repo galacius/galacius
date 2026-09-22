@@ -1,16 +1,27 @@
+import { FC, useLayoutEffect, useRef, useState } from "react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../atoms/tooltip";
 import { cn } from "../../utils/common";
-import { FC, useLayoutEffect, useRef, useState } from "react";
+
+// Only 2-4 are supported (1 line uses the default single-line `truncate` behavior instead).
+// Written as literal class names (not built from a template string) so Tailwind's scanner picks them up.
+const LINE_CLAMP_CLASSES: Record<number, string> = {
+  2: "line-clamp-2",
+  3: "line-clamp-3",
+  4: "line-clamp-4",
+};
 
 export const TruncatedText: FC<{
   text: string;
   className?: string;
   tooltipClassName?: string;
   positionerClassName?: string;
-}> = ({ text, className, tooltipClassName, positionerClassName }) => {
+  /** Number of lines to clamp to before truncating. Defaults to 1 (single-line truncate). */
+  lines?: number;
+}> = ({ text, className, tooltipClassName, positionerClassName, lines = 1 }) => {
   const wrapperRef = useRef<HTMLSpanElement>(null);
   const textRef = useRef<HTMLSpanElement>(null);
   const [overflowing, setOverflowing] = useState(false);
+  const isMultiline = lines > 1;
 
   useLayoutEffect(() => {
     const wrapper = wrapperRef.current;
@@ -21,17 +32,28 @@ export const TruncatedText: FC<{
     // inside doesn't trigger the observer and cause oscillation.
     const check = () => {
       const el = textRef.current;
-      if (el) setOverflowing(el.scrollWidth > el.clientWidth);
+      if (!el) return;
+      setOverflowing(
+        isMultiline ? el.scrollHeight > el.clientHeight : el.scrollWidth > el.clientWidth
+      );
     };
     check();
 
     const observer = new ResizeObserver(check);
     observer.observe(wrapper);
     return () => observer.disconnect();
-  }, [text]);
+  }, [text, isMultiline]);
 
   const content = (
-    <span ref={textRef} className={cn("block truncate font-mono text-xs", className)}>
+    <span
+      ref={textRef}
+      className={cn(
+        "block",
+        isMultiline ? (LINE_CLAMP_CLASSES[lines] ?? LINE_CLAMP_CLASSES[4]) : "truncate",
+        !isMultiline && "font-mono text-xs",
+        className
+      )}
+    >
       {text}
     </span>
   );

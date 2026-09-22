@@ -10,6 +10,7 @@ import {
   TooltipContent,
   TooltipTrigger,
   Trash2Icon,
+  TruncatedText,
 } from "@galacius/design-system";
 import { FC, useMemo, useState } from "react";
 import { PluginManifest } from "../hooks/data-access/useGetPluginsFromMarketplace";
@@ -215,7 +216,12 @@ export const PluginCard: FC<PluginCardProps> = ({
       <div className={cn("pointer-events-none", isPluginDisabled && "opacity-50")}>
         {/* Description */}
         <div className="border-b border-border px-4 py-3">
-          <p className="text-body text-muted-foreground">{plugin.description}</p>
+          <TruncatedText
+            text={plugin.description}
+            lines={2}
+            className="text-body pointer-events-auto min-h-[2lh] text-muted-foreground"
+            tooltipClassName="max-w-xs"
+          />
         </div>
 
         {/* Metadata */}
