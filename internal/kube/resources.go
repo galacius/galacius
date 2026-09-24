@@ -40,6 +40,12 @@ func (h *FactoryHandle) SetPodsEventHandler(fn func(namespace string)) {
 	h.pod.SetEventHandler(fn)
 }
 
+// SetPodsOnSynced registers fn to be called once after Pods' initial cache
+// sync completes.
+func (h *FactoryHandle) SetPodsOnSynced(fn func()) {
+	h.pod.SetOnSynced(fn)
+}
+
 // PodLister returns the current lister for "pods", scoped exactly as
 // configured by the most recent RescopePods call (or cluster-wide by
 // default).
@@ -479,3 +485,27 @@ func (h *FactoryHandle) initScopedResources() {
 		"events":          h.event,
 	}
 }
+
+func (h *FactoryHandle) SetDeploymentsOnSynced(fn func())              { h.deployment.SetOnSynced(fn) }
+func (h *FactoryHandle) SetDaemonSetsOnSynced(fn func())               { h.daemonset.SetOnSynced(fn) }
+func (h *FactoryHandle) SetStatefulSetsOnSynced(fn func())             { h.statefulset.SetOnSynced(fn) }
+func (h *FactoryHandle) SetReplicaSetsOnSynced(fn func())              { h.replicaset.SetOnSynced(fn) }
+func (h *FactoryHandle) SetJobsOnSynced(fn func())                     { h.job.SetOnSynced(fn) }
+func (h *FactoryHandle) SetCronJobsOnSynced(fn func())                 { h.cronjob.SetOnSynced(fn) }
+func (h *FactoryHandle) SetConfigMapsOnSynced(fn func())               { h.configmap.SetOnSynced(fn) }
+func (h *FactoryHandle) SetSecretsOnSynced(fn func())                  { h.secret.SetOnSynced(fn) }
+func (h *FactoryHandle) SetResourceQuotasOnSynced(fn func())           { h.resourcequota.SetOnSynced(fn) }
+func (h *FactoryHandle) SetLimitRangesOnSynced(fn func())              { h.limitrange.SetOnSynced(fn) }
+func (h *FactoryHandle) SetHorizontalPodAutoscalersOnSynced(fn func()) { h.hpa.SetOnSynced(fn) }
+func (h *FactoryHandle) SetPodDisruptionBudgetsOnSynced(fn func())     { h.pdb.SetOnSynced(fn) }
+func (h *FactoryHandle) SetLeasesOnSynced(fn func())                   { h.lease.SetOnSynced(fn) }
+func (h *FactoryHandle) SetServicesOnSynced(fn func())                 { h.service.SetOnSynced(fn) }
+func (h *FactoryHandle) SetEndpointSlicesOnSynced(fn func())           { h.endpointslice.SetOnSynced(fn) }
+func (h *FactoryHandle) SetEndpointsOnSynced(fn func())                { h.endpoint.SetOnSynced(fn) }
+func (h *FactoryHandle) SetIngressesOnSynced(fn func())                { h.ingress.SetOnSynced(fn) }
+func (h *FactoryHandle) SetNetworkPoliciesOnSynced(fn func())          { h.networkpolicy.SetOnSynced(fn) }
+func (h *FactoryHandle) SetPersistentVolumeClaimsOnSynced(fn func())   { h.pvc.SetOnSynced(fn) }
+func (h *FactoryHandle) SetServiceAccountsOnSynced(fn func())          { h.serviceaccount.SetOnSynced(fn) }
+func (h *FactoryHandle) SetRolesOnSynced(fn func())                    { h.role.SetOnSynced(fn) }
+func (h *FactoryHandle) SetRoleBindingsOnSynced(fn func())             { h.rolebinding.SetOnSynced(fn) }
+func (h *FactoryHandle) SetEventsOnSynced(fn func())                   { h.event.SetOnSynced(fn) }

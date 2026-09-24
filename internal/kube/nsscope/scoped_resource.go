@@ -105,6 +105,12 @@ type Config[L any] struct {
 	// that's already been superseded by a later Rescope call. Optional.
 	OnForbidden func(name string, namespace string)
 
+	// OnSynced is called once after the resource's initial cache sync completes
+	// (when synced channel closes), so the caller can emit a full resource list
+	// via its debouncer once the cache is warmed. Called regardless of whether
+	// any objects existed in the initial LIST. Optional.
+	OnSynced func()
+
 	// GlobalStop bounds the lifetime of the cluster-wide informer
 	// (NewClusterWideInformer) independently of any single group's stop
 	// channel. NewClusterWideInformer is typically backed by a shared
@@ -205,6 +211,14 @@ func (r *ScopedResource[L]) SetEventHandler(fn func(namespace string)) {
 	r.mu.Unlock()
 }
 
+// SetOnSynced registers a callback to fire when the resource's initial cache
+// sync completes. Used to emit a full resource list after the cache is warmed.
+func (r *ScopedResource[L]) SetOnSynced(fn func()) {
+	r.mu.Lock()
+	r.cfg.OnSynced = fn
+	r.mu.Unlock()
+}
+
 // Lister returns the current lister, scoped exactly as configured by the
 // most recent Rescope call (or cluster-wide if Rescope has never been called
 // directly — New bootstraps a cluster-wide default).
@@ -245,8 +259,12 @@ func (r *ScopedResource[L]) buildGroup(namespaces []string) *group {
 		synced:     make(chan struct{}),
 	}
 
-	handler := cache.ResourceEventHandlerFuncs{
-		AddFunc:    func(obj any) { r.fireEvent(objNamespace(obj)) },
+	handler := cache.ResourceEventHandlerDetailedFuncs{
+		AddFunc: func(obj any, isInInitialList bool) {
+			if !isInInitialList {
+				r.fireEvent(objNamespace(obj))
+			}
+		},
 		UpdateFunc: func(_, newObj any) { r.fireEvent(objNamespace(newObj)) },
 		DeleteFunc: func(obj any) { r.fireEvent(objNamespace(obj)) },
 	}
@@ -353,6 +371,9 @@ func (r *ScopedResource[L]) buildGroup(namespaces []string) *group {
 			}
 		}
 		close(g.synced)
+		if r.cfg.OnSynced != nil {
+			r.cfg.OnSynced()
+		}
 	}()
 
 	return g

@@ -67,14 +67,15 @@ var ResyncJitterStep = time.Second
 
 // FactoryHandle wraps a SharedInformerFactory with per-informer stop channels.
 type FactoryHandle struct {
-	Factory      informers.SharedInformerFactory
-	stopChannels map[string]*stopEntry
-	globalStop   chan struct{}
-	globalOnce   sync.Once
-	forbidden    sync.Map // map[string]struct{} — resource keys that failed to sync
-	debouncers   []*debouncer.Debouncer
-	synced       map[string]chan struct{}
-	syncedOnce   map[string]*sync.Once
+	Factory        informers.SharedInformerFactory
+	stopChannels   map[string]*stopEntry
+	globalStop     chan struct{}
+	globalOnce     sync.Once
+	forbidden      sync.Map // map[string]struct{} — resource keys that failed to sync
+	debouncers     []*debouncer.Debouncer
+	synced         map[string]chan struct{}
+	syncedOnce     map[string]*sync.Once
+	syncDebouncers map[string]*debouncer.Debouncer // resource->debouncer for triggering on sync
 	// informers indexes the generic (cluster-scoped) entries below by resource
 	// key, so StopResource can evict a forbidden resource's cached objects.
 	// nsscope-managed resources handle their own eviction internally instead
@@ -214,14 +215,15 @@ func NewFactoryHandle(cs kubernetes.Interface, onForbidden func(resource, namesp
 		informers.WithCustomResyncConfig(resyncConfig))
 
 	h := &FactoryHandle{
-		Factory:      factory,
-		stopChannels: make(map[string]*stopEntry),
-		globalStop:   make(chan struct{}),
-		synced:       make(map[string]chan struct{}),
-		syncedOnce:   make(map[string]*sync.Once),
-		informers:    make(map[string]cache.SharedIndexInformer),
-		cs:           cs,
-		onForbidden:  onForbidden,
+		Factory:        factory,
+		stopChannels:   make(map[string]*stopEntry),
+		globalStop:     make(chan struct{}),
+		synced:         make(map[string]chan struct{}),
+		syncedOnce:     make(map[string]*sync.Once),
+		syncDebouncers: make(map[string]*debouncer.Debouncer),
+		informers:      make(map[string]cache.SharedIndexInformer),
+		cs:             cs,
+		onForbidden:    onForbidden,
 	}
 
 	type entry struct {
@@ -303,6 +305,11 @@ func NewFactoryHandle(cs kubernetes.Interface, onForbidden func(resource, namesp
 				h.StopResource(resource, onForbidden)
 			}
 			h.syncedOnce[resource].Do(func() { close(h.synced[resource]) })
+			// Trigger the resource's debouncer after sync completes, emitting
+			// the full resource list via the staggered debouncer.
+			if debouncer, ok := h.syncDebouncers[resource]; ok {
+				debouncer.Trigger("")
+			}
 		}()
 	}
 
@@ -378,6 +385,12 @@ func (h *FactoryHandle) IsNamespaceForbidden(resource, namespace string) bool {
 // RegisterDebouncer records a debouncer for lifecycle management.
 func (h *FactoryHandle) RegisterDebouncer(d *debouncer.Debouncer) {
 	h.debouncers = append(h.debouncers, d)
+}
+
+// RegisterSyncDebouncer associates a debouncer with a resource so it can be
+// triggered when the resource's initial sync completes.
+func (h *FactoryHandle) RegisterSyncDebouncer(resource string, d *debouncer.Debouncer) {
+	h.syncDebouncers[resource] = d
 }
 
 // Stop shuts down all per-resource informers and the global sync goroutine.

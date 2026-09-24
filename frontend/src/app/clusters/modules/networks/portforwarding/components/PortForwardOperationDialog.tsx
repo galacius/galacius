@@ -143,7 +143,7 @@ export const PortForwardOperationDialog: FC<PortForwardOperationDialogProps> = (
         if (!o) onClose();
       }}
     >
-      <DialogContent showCloseButton={false}>
+      <DialogContent showCloseButton={false} aria-busy={pfLoading}>
         <DialogHeader>
           <DialogTitle>
             {editingPf ? "Edit Port Forward" : "Port Forwarding"} for {resourceName}

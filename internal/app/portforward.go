@@ -9,9 +9,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/galacius/galacius/internal/kube"
 	"github.com/galacius/galacius/packages/core/kube/dto"
+	"github.com/google/uuid"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -177,13 +177,6 @@ func (a *App) StartPortForward(namespace, kind, name, podPort, localPort, protoc
 		return zero, err
 	}
 
-	a.pfMu.RLock()
-	count := len(a.portForwards)
-	a.pfMu.RUnlock()
-	if count >= maxPortForwardSessions {
-		return zero, fmt.Errorf("maximum of %d concurrent port-forward sessions reached", maxPortForwardSessions)
-	}
-
 	a.mu.RLock()
 	cs := a.clients[a.activeContext]
 	rc := a.restConfigs[a.activeContext]
@@ -244,7 +237,13 @@ func (a *App) StartPortForward(namespace, kind, name, podPort, localPort, protoc
 		if ports, err := pfw.GetPorts(); err == nil && len(ports) > 0 {
 			actualLocalPort = strconv.Itoa(int(ports[0].Local))
 		}
+		// Check and register atomically to prevent exceeding maxPortForwardSessions
 		a.pfMu.Lock()
+		if len(a.portForwards) >= maxPortForwardSessions {
+			a.pfMu.Unlock()
+			pfCancel()
+			return zero, fmt.Errorf("maximum of %d concurrent port-forward sessions reached", maxPortForwardSessions)
+		}
 		a.portForwards[id] = dto.PortForward{
 			ID: id, Name: name, Namespace: namespace, Kind: kind,
 			PodPort: resolvedPodPort, TargetPort: podPort, ServicePort: servicePort, LocalPort: actualLocalPort,
