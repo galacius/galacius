@@ -7,7 +7,6 @@ import (
 
 	kubeResources "github.com/galacius/galacius/internal/kube/resources"
 	"github.com/galacius/galacius/packages/core/kube/dto"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -106,7 +105,7 @@ func (a *App) emitConfigMaps() {
 		log.Printf("app: emitConfigMaps: %v", err)
 		return
 	}
-	runtime.EventsEmit(a.ctx, "configmaps:update", data)
+	a.emitPump.Enqueue("configmaps:update", func() any { return data })
 }
 
 func (a *App) GetConfigMapYAML(namespace, name string) (string, error) {
@@ -183,5 +182,5 @@ func (a *App) emitConfigMapDetail() {
 	if err != nil {
 		return
 	}
-	runtime.EventsEmit(a.ctx, "configmap:update", detail)
+	a.emitPump.Enqueue("configmap:update", func() any { return detail })
 }

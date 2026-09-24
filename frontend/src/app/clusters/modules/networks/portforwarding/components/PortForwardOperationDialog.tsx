@@ -8,7 +8,7 @@ import {
   DialogTitle,
   Input,
 } from "@galacius/design-system";
-import { FC, useReducer } from "react";
+import { FC, useReducer, useRef } from "react";
 import { useOpenBrowserURL } from "../../../../../shared/hooks/useOpenBrowserURL";
 import type { PortForward } from "../api/resources";
 import { RemovePortForward, StartPortForward } from "../api/resources";
@@ -87,6 +87,9 @@ export const PortForwardOperationDialog: FC<PortForwardOperationDialogProps> = (
   });
   const { address, localPort, useHttps, openInBrowser, pfLoading, pfError } = state;
 
+  // Track if dialog is still open to prevent stale state updates after user clicks Cancel
+  const dialogOpenRef = useRef(true);
+
   async function handleStart() {
     dispatch({ type: "startLoading" });
     try {
@@ -105,6 +108,10 @@ export const PortForwardOperationDialog: FC<PortForwardOperationDialogProps> = (
         scheme,
         servicePort
       );
+
+      // Skip side effects if dialog was closed while request was in flight
+      if (!dialogOpenRef.current) return;
+
       dispatch({ type: "success" });
       onClose();
       if (editingPf) {
@@ -121,6 +128,9 @@ export const PortForwardOperationDialog: FC<PortForwardOperationDialogProps> = (
         openBrowserURL(`http${useHttps ? "s" : ""}://${address}:${result.LocalPort}`);
       }
     } catch (err) {
+      // Skip error dispatch if dialog was closed while request was in flight
+      if (!dialogOpenRef.current) return;
+
       dispatch({ type: "error", message: String(err) });
     }
   }
@@ -129,10 +139,11 @@ export const PortForwardOperationDialog: FC<PortForwardOperationDialogProps> = (
     <Dialog
       open={open}
       onOpenChange={(o) => {
+        dialogOpenRef.current = o;
         if (!o) onClose();
       }}
     >
-      <DialogContent showCloseButton={false}>
+      <DialogContent showCloseButton={false} aria-busy={pfLoading}>
         <DialogHeader>
           <DialogTitle>
             {editingPf ? "Edit Port Forward" : "Port Forwarding"} for {resourceName}
@@ -194,7 +205,14 @@ export const PortForwardOperationDialog: FC<PortForwardOperationDialogProps> = (
         </div>
 
         <DialogFooter>
-          <Button variant="outline" size="sm" onClick={onClose} disabled={pfLoading}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              dialogOpenRef.current = false;
+              onClose();
+            }}
+          >
             Cancel
           </Button>
           <Button size="sm" onClick={handleStart} disabled={pfLoading}>

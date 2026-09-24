@@ -8,7 +8,6 @@ import (
 	"github.com/galacius/galacius/internal/kube"
 	kubeResources "github.com/galacius/galacius/internal/kube/resources"
 	"github.com/galacius/galacius/packages/core/kube/dto"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -51,7 +50,7 @@ func (a *App) emitNamespaces() {
 		log.Printf("app: emitNamespaces: %v", err)
 		return
 	}
-	runtime.EventsEmit(a.ctx, "namespaces:update", data)
+	a.emitPump.Enqueue("namespaces:update", func() any { return data })
 }
 
 // GetNamespaces returns the list of namespace names for use in the UI selector.
@@ -246,30 +245,35 @@ func (a *App) SetActiveNamespaces(namespaces []string, seq int64) error {
 
 	a.emitActiveNamespacesToPlugins(namespaces)
 
-	a.emitPods()
-	a.emitEvents()
-	a.emitLeases()
-	a.emitEndpoints()
-	a.emitEndpointSlices()
-	a.emitDeployments()
-	a.emitDaemonSets()
-	a.emitReplicaSets()
-	a.emitStatefulSets()
-	a.emitJobs()
-	a.emitCronJobs()
-	a.emitConfigMaps()
-	a.emitSecrets()
-	a.emitResourceQuotas()
-	a.emitLimitRanges()
-	a.emitHPAs()
-	a.emitPodDisruptionBudgets()
-	a.emitIngresses()
-	a.emitNetworkPolicies()
-	a.emitPersistentVolumeClaims()
-	a.emitServices()
-	a.emitServiceAccounts()
-	a.emitRoles()
-	a.emitRoleBindings()
+	// Background the emits so the Wails-bound call returns immediately after Rescope completes,
+	// without waiting for the full payload marshaling and network transmission.
+	go func() {
+		a.emitPods()
+		a.emitEvents()
+		a.emitLeases()
+		a.emitEndpoints()
+		a.emitEndpointSlices()
+		a.emitDeployments()
+		a.emitDaemonSets()
+		a.emitReplicaSets()
+		a.emitStatefulSets()
+		a.emitJobs()
+		a.emitCronJobs()
+		a.emitConfigMaps()
+		a.emitSecrets()
+		a.emitResourceQuotas()
+		a.emitLimitRanges()
+		a.emitHPAs()
+		a.emitPodDisruptionBudgets()
+		a.emitIngresses()
+		a.emitNetworkPolicies()
+		a.emitPersistentVolumeClaims()
+		a.emitServices()
+		a.emitServiceAccounts()
+		a.emitRoles()
+		a.emitRoleBindings()
+	}()
+
 	return nil
 }
 
@@ -303,5 +307,5 @@ func (a *App) emitNamespaceDetail() {
 	if err != nil {
 		return
 	}
-	runtime.EventsEmit(a.ctx, "namespace:update", detail)
+	a.emitPump.Enqueue("namespace:update", func() any { return detail })
 }

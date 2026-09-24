@@ -5,7 +5,6 @@ import (
 
 	kubeResources "github.com/galacius/galacius/internal/kube/resources"
 	"github.com/galacius/galacius/packages/core/kube/dto"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 func (a *App) WatchPersistentVolumeDetail(name string) {
@@ -29,7 +28,7 @@ func (a *App) emitPersistentVolumeDetail() {
 	if err != nil {
 		return
 	}
-	runtime.EventsEmit(a.ctx, "pv:update", detail)
+	a.emitPump.Enqueue("pv:update", func() any { return detail })
 }
 
 func (a *App) GetPersistentVolumeByName(name string) (dto.PersistentVolumeDetail, error) {

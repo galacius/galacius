@@ -10,6 +10,7 @@ import (
 	"github.com/galacius/galacius/internal/config"
 	"github.com/galacius/galacius/internal/kube"
 	"github.com/galacius/galacius/internal/lib/debouncer"
+	"github.com/galacius/galacius/internal/lib/emitpump"
 	"github.com/galacius/galacius/internal/plugin"
 	"github.com/galacius/galacius/internal/proxy"
 	"github.com/galacius/galacius/internal/updater"
@@ -74,6 +75,7 @@ type App struct {
 	grpcServerCfg   *hostgrpc.GRPCServerConfig
 	proxyManagers   map[string]*proxy.Manager
 	proxyManagersMu sync.RWMutex
+	emitPump        *emitpump.EmitPump // serializes and coalesces wailsruntime.EventsEmit calls
 
 	// watchedSecret/watchedResourceQuota/watchedPersistentVolumeClaim/... track
 	// the resource currently shown in that kind's (single) open detail drawer,
@@ -156,6 +158,9 @@ func NewApp(version string) *App {
 // see NOT_INSTALLED for an already-installed plugin.
 func (a *App) Startup(ctx context.Context) {
 	a.ctx = ctx
+	a.emitPump = emitpump.New(ctx, func(eventName string, payload any) {
+		wailsruntime.EventsEmit(a.ctx, eventName, payload)
+	})
 	a.appSizeBytes = getAppSizeBytes()
 	a.detectInstallSource()
 	a.restoreInstalledPlugins()
@@ -288,9 +293,9 @@ func (a *App) handleProxyLost(contextName, message string) {
 // Connect builds (or reuses) a clientset for the given context, probes the API
 // server, and marks the context active. The ping runs outside the lock so a
 // slow or unreachable cluster never blocks other goroutines reading the cache.
-// NewFactoryHandle blocks until every informer's initial LIST has populated
-// its cache, so activeContext is only set — and the frontend's first
-// List*/Get* calls only unblocked — once listers are warm.
+// NewFactoryHandle returns immediately; each resource's cache is warmed
+// asynchronously. Callers must wait on GetSyncedChan(resource) or the
+// waitForResourceSync* helpers before reading a lister.
 //
 // seq is a value the frontend increments synchronously on every call (before
 // the async IPC dispatch), same pattern as SetActiveNamespaces: rapid
@@ -444,14 +449,24 @@ func (a *App) Connect(contextName string, seq int64) error {
 
 	// Register event handlers for live updates.
 	isCtx := func() bool { return a.isActive(contextName) }
-	debLeases := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitLeases() }, isCtx)
-	debEvents := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitEvents() }, isCtx)
-	debEventDetail := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitEventDetail() }, isCtx)
-	debEndpoints := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitEndpoints() }, isCtx)
-	debEndpointDetail := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitEndpointDetail() }, isCtx)
-	debEndpointSlices := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitEndpointSlices() }, isCtx)
-	debPods := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitPods() }, isCtx)
-	debPodDetail := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitPodDetail() }, isCtx)
+
+	// Stagger debouncer intervals by 25ms per resource index to avoid ~40 simultaneous
+	// emits during informer initial LIST replay: base 200ms + i*25ms.
+	debIdx := 0
+	newDeb := func(fn func(string)) *debouncer.Debouncer {
+		interval := debouncer.DefaultDebounceInterval + time.Duration(debIdx)*25*time.Millisecond
+		debIdx++
+		return debouncer.NewDebouncer(interval, fn, isCtx)
+	}
+
+	debLeases := newDeb(func(_ string) { a.emitLeases() })
+	debEvents := newDeb(func(_ string) { a.emitEvents() })
+	debEventDetail := newDeb(func(_ string) { a.emitEventDetail() })
+	debEndpoints := newDeb(func(_ string) { a.emitEndpoints() })
+	debEndpointDetail := newDeb(func(_ string) { a.emitEndpointDetail() })
+	debEndpointSlices := newDeb(func(_ string) { a.emitEndpointSlices() })
+	debPods := newDeb(func(_ string) { a.emitPods() })
+	debPodDetail := newDeb(func(_ string) { a.emitPodDetail() })
 	// Scope the Pods informer(s) to the namespace filter already known at
 	// connect time (restoredNamespaces), avoiding a cluster-wide Pods LIST
 	// when the caller only cares about a handful of namespaces. See
@@ -463,8 +478,9 @@ func (a *App) Connect(contextName string, seq int64) error {
 		}
 	})
 	h.RescopePods(restoredNamespaces)
-	debDeployments := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitDeployments() }, isCtx)
-	debDeploymentDetail := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitDeploymentDetail() }, isCtx)
+	h.SetPodsOnSynced(func() { debPods.Trigger("") })
+	debDeployments := newDeb(func(_ string) { a.emitDeployments() })
+	debDeploymentDetail := newDeb(func(_ string) { a.emitDeploymentDetail() })
 	// Scope the Deployments/DaemonSets/StatefulSets/ReplicaSets/Jobs/CronJobs
 	// informer(s) to the namespace filter already known at connect time
 	// (restoredNamespaces), avoiding a cluster-wide LIST when the caller
@@ -477,8 +493,9 @@ func (a *App) Connect(contextName string, seq int64) error {
 		}
 	})
 	h.RescopeDeployments(restoredNamespaces)
-	debDaemonSets := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitDaemonSets() }, isCtx)
-	debDaemonSetDetail := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitDaemonSetDetail() }, isCtx)
+	h.SetDeploymentsOnSynced(func() { debDeployments.Trigger("") })
+	debDaemonSets := newDeb(func(_ string) { a.emitDaemonSets() })
+	debDaemonSetDetail := newDeb(func(_ string) { a.emitDaemonSetDetail() })
 	h.SetDaemonSetsEventHandler(func(ns string) {
 		if a.isActive(contextName) {
 			debDaemonSets.Trigger(ns)
@@ -486,8 +503,9 @@ func (a *App) Connect(contextName string, seq int64) error {
 		}
 	})
 	h.RescopeDaemonSets(restoredNamespaces)
-	debReplicaSets := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitReplicaSets() }, isCtx)
-	debReplicaSetDetail := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitReplicaSetDetail() }, isCtx)
+	h.SetDaemonSetsOnSynced(func() { debDaemonSets.Trigger("") })
+	debReplicaSets := newDeb(func(_ string) { a.emitReplicaSets() })
+	debReplicaSetDetail := newDeb(func(_ string) { a.emitReplicaSetDetail() })
 	h.SetReplicaSetsEventHandler(func(ns string) {
 		if a.isActive(contextName) {
 			debReplicaSets.Trigger(ns)
@@ -495,8 +513,9 @@ func (a *App) Connect(contextName string, seq int64) error {
 		}
 	})
 	h.RescopeReplicaSets(restoredNamespaces)
-	debStatefulSets := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitStatefulSets() }, isCtx)
-	debStatefulSetDetail := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitStatefulSetDetail() }, isCtx)
+	h.SetReplicaSetsOnSynced(func() { debReplicaSets.Trigger("") })
+	debStatefulSets := newDeb(func(_ string) { a.emitStatefulSets() })
+	debStatefulSetDetail := newDeb(func(_ string) { a.emitStatefulSetDetail() })
 	h.SetStatefulSetsEventHandler(func(ns string) {
 		if a.isActive(contextName) {
 			debStatefulSets.Trigger(ns)
@@ -504,8 +523,9 @@ func (a *App) Connect(contextName string, seq int64) error {
 		}
 	})
 	h.RescopeStatefulSets(restoredNamespaces)
-	debJobs := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitJobs() }, isCtx)
-	debJobDetail := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitJobDetail() }, isCtx)
+	h.SetStatefulSetsOnSynced(func() { debStatefulSets.Trigger("") })
+	debJobs := newDeb(func(_ string) { a.emitJobs() })
+	debJobDetail := newDeb(func(_ string) { a.emitJobDetail() })
 	h.SetJobsEventHandler(func(ns string) {
 		if a.isActive(contextName) {
 			debJobs.Trigger(ns)
@@ -513,8 +533,9 @@ func (a *App) Connect(contextName string, seq int64) error {
 		}
 	})
 	h.RescopeJobs(restoredNamespaces)
-	debCronJobs := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitCronJobs() }, isCtx)
-	debCronJobDetail := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitCronJobDetail() }, isCtx)
+	h.SetJobsOnSynced(func() { debJobs.Trigger("") })
+	debCronJobs := newDeb(func(_ string) { a.emitCronJobs() })
+	debCronJobDetail := newDeb(func(_ string) { a.emitCronJobDetail() })
 	h.SetCronJobsEventHandler(func(ns string) {
 		if a.isActive(contextName) {
 			debCronJobs.Trigger(ns)
@@ -522,48 +543,49 @@ func (a *App) Connect(contextName string, seq int64) error {
 		}
 	})
 	h.RescopeCronJobs(restoredNamespaces)
-	debConfigMaps := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitConfigMaps() }, isCtx)
-	debConfigMapDetail := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitConfigMapDetail() }, isCtx)
-	debSecrets := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitSecrets() }, isCtx)
-	debSecretDetail := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitSecretDetail() }, isCtx)
-	debResourceQuotas := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitResourceQuotas() }, isCtx)
-	debResourceQuotaDetail := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitResourceQuotaDetail() }, isCtx)
-	debLimitRanges := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitLimitRanges() }, isCtx)
-	debLimitRangeDetail := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitLimitRangeDetail() }, isCtx)
-	debHPAs := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitHPAs() }, isCtx)
-	debHPADetail := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitHPADetail() }, isCtx)
-	debPodDisruptionBudgets := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitPodDisruptionBudgets() }, isCtx)
-	debPodDisruptionBudgetDetail := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitPodDisruptionBudgetDetail() }, isCtx)
-	debIngresses := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitIngresses() }, isCtx)
-	debIngressDetail := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitIngressDetail() }, isCtx)
-	debNetworkPolicies := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitNetworkPolicies() }, isCtx)
-	debNetworkPolicyDetail := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitNetworkPolicyDetail() }, isCtx)
-	debIngressClasses := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitIngressClasses() }, isCtx)
-	debIngressClassDetail := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitIngressClassDetail() }, isCtx)
-	debValidatingWebhookConfigs := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitValidatingWebhookConfigs() }, isCtx)
-	debValidatingWebhookConfigDetail := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitValidatingWebhookConfigDetail() }, isCtx)
-	debPersistentVolumeClaims := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitPersistentVolumeClaims() }, isCtx)
-	debPersistentVolumeClaimDetail := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitPersistentVolumeClaimDetail() }, isCtx)
-	debPersistentVolumes := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitPersistentVolumes() }, isCtx)
-	debPersistentVolumeDetail := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitPersistentVolumeDetail() }, isCtx)
-	debStorageClasses := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitStorageClasses() }, isCtx)
-	debServices := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitServices() }, isCtx)
-	debServiceDetail := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitServiceDetail() }, isCtx)
-	debNodes := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitNodes() }, isCtx)
-	debNodeDetail := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitNodeDetail() }, isCtx)
-	debNamespaces := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitNamespaces() }, isCtx)
-	debNamespaceDetail := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitNamespaceDetail() }, isCtx)
-	debServiceAccounts := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitServiceAccounts() }, isCtx)
-	debServiceAccountDetail := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitServiceAccountDetail() }, isCtx)
-	debClusterRoles := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitClusterRoles() }, isCtx)
-	debClusterRoleDetail := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitClusterRoleDetail() }, isCtx)
-	debRoles := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitRoles() }, isCtx)
-	debRoleDetail := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitRoleDetail() }, isCtx)
-	debClusterRoleBindings := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitClusterRoleBindings() }, isCtx)
-	debClusterRoleBindingDetail := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitClusterRoleBindingDetail() }, isCtx)
-	debRoleBindings := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitRoleBindings() }, isCtx)
-	debRoleBindingDetail := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitRoleBindingDetail() }, isCtx)
-	debPriorityClasses := debouncer.NewDebouncer(debouncer.DefaultDebounceInterval, func(_ string) { a.emitPriorityClasses() }, isCtx)
+	h.SetCronJobsOnSynced(func() { debCronJobs.Trigger("") })
+	debConfigMaps := newDeb(func(_ string) { a.emitConfigMaps() })
+	debConfigMapDetail := newDeb(func(_ string) { a.emitConfigMapDetail() })
+	debSecrets := newDeb(func(_ string) { a.emitSecrets() })
+	debSecretDetail := newDeb(func(_ string) { a.emitSecretDetail() })
+	debResourceQuotas := newDeb(func(_ string) { a.emitResourceQuotas() })
+	debResourceQuotaDetail := newDeb(func(_ string) { a.emitResourceQuotaDetail() })
+	debLimitRanges := newDeb(func(_ string) { a.emitLimitRanges() })
+	debLimitRangeDetail := newDeb(func(_ string) { a.emitLimitRangeDetail() })
+	debHPAs := newDeb(func(_ string) { a.emitHPAs() })
+	debHPADetail := newDeb(func(_ string) { a.emitHPADetail() })
+	debPodDisruptionBudgets := newDeb(func(_ string) { a.emitPodDisruptionBudgets() })
+	debPodDisruptionBudgetDetail := newDeb(func(_ string) { a.emitPodDisruptionBudgetDetail() })
+	debIngresses := newDeb(func(_ string) { a.emitIngresses() })
+	debIngressDetail := newDeb(func(_ string) { a.emitIngressDetail() })
+	debNetworkPolicies := newDeb(func(_ string) { a.emitNetworkPolicies() })
+	debNetworkPolicyDetail := newDeb(func(_ string) { a.emitNetworkPolicyDetail() })
+	debIngressClasses := newDeb(func(_ string) { a.emitIngressClasses() })
+	debIngressClassDetail := newDeb(func(_ string) { a.emitIngressClassDetail() })
+	debValidatingWebhookConfigs := newDeb(func(_ string) { a.emitValidatingWebhookConfigs() })
+	debValidatingWebhookConfigDetail := newDeb(func(_ string) { a.emitValidatingWebhookConfigDetail() })
+	debPersistentVolumeClaims := newDeb(func(_ string) { a.emitPersistentVolumeClaims() })
+	debPersistentVolumeClaimDetail := newDeb(func(_ string) { a.emitPersistentVolumeClaimDetail() })
+	debPersistentVolumes := newDeb(func(_ string) { a.emitPersistentVolumes() })
+	debPersistentVolumeDetail := newDeb(func(_ string) { a.emitPersistentVolumeDetail() })
+	debStorageClasses := newDeb(func(_ string) { a.emitStorageClasses() })
+	debServices := newDeb(func(_ string) { a.emitServices() })
+	debServiceDetail := newDeb(func(_ string) { a.emitServiceDetail() })
+	debNodes := newDeb(func(_ string) { a.emitNodes() })
+	debNodeDetail := newDeb(func(_ string) { a.emitNodeDetail() })
+	debNamespaces := newDeb(func(_ string) { a.emitNamespaces() })
+	debNamespaceDetail := newDeb(func(_ string) { a.emitNamespaceDetail() })
+	debServiceAccounts := newDeb(func(_ string) { a.emitServiceAccounts() })
+	debServiceAccountDetail := newDeb(func(_ string) { a.emitServiceAccountDetail() })
+	debClusterRoles := newDeb(func(_ string) { a.emitClusterRoles() })
+	debClusterRoleDetail := newDeb(func(_ string) { a.emitClusterRoleDetail() })
+	debRoles := newDeb(func(_ string) { a.emitRoles() })
+	debRoleDetail := newDeb(func(_ string) { a.emitRoleDetail() })
+	debClusterRoleBindings := newDeb(func(_ string) { a.emitClusterRoleBindings() })
+	debClusterRoleBindingDetail := newDeb(func(_ string) { a.emitClusterRoleBindingDetail() })
+	debRoleBindings := newDeb(func(_ string) { a.emitRoleBindings() })
+	debRoleBindingDetail := newDeb(func(_ string) { a.emitRoleBindingDetail() })
+	debPriorityClasses := newDeb(func(_ string) { a.emitPriorityClasses() })
 
 	// Register all debouncers with the factory for lifecycle management
 	h.RegisterDebouncer(debLeases)
@@ -629,6 +651,18 @@ func (a *App) Connect(contextName string, seq int64) error {
 	h.RegisterDebouncer(debRoleBindingDetail)
 	h.RegisterDebouncer(debPriorityClasses)
 
+	// Register sync debouncers for cluster-scoped resources so they fire when
+	// initial cache sync completes (emitting full resource list via staggered debouncer).
+	h.RegisterSyncDebouncer("namespaces", debNamespaces)
+	h.RegisterSyncDebouncer("nodes", debNodes)
+	h.RegisterSyncDebouncer("priorityclasses", debPriorityClasses)
+	h.RegisterSyncDebouncer("validatingwebhookconfigs", debValidatingWebhookConfigs)
+	h.RegisterSyncDebouncer("ingressclasses", debIngressClasses)
+	h.RegisterSyncDebouncer("pvs", debPersistentVolumes)
+	h.RegisterSyncDebouncer("storageclasses", debStorageClasses)
+	h.RegisterSyncDebouncer("clusterroles", debClusterRoles)
+	h.RegisterSyncDebouncer("clusterrolebindings", debClusterRoleBindings)
+
 	// ConfigMaps/Secrets/ResourceQuotas/LimitRanges/HPAs/PDBs/Leases/Services/
 	// EndpointSlices/Endpoints/Ingresses/NetworkPolicies/PVCs/ServiceAccounts/
 	// Roles/RoleBindings/Events no longer get a raw AddEventHandler block
@@ -644,6 +678,7 @@ func (a *App) Connect(contextName string, seq int64) error {
 		}
 	})
 	h.RescopeConfigMaps(restoredNamespaces)
+	h.SetConfigMapsOnSynced(func() { debConfigMaps.Trigger("") })
 	h.SetSecretsEventHandler(func(ns string) {
 		if a.isActive(contextName) {
 			debSecrets.Trigger(ns)
@@ -651,6 +686,7 @@ func (a *App) Connect(contextName string, seq int64) error {
 		}
 	})
 	h.RescopeSecrets(restoredNamespaces)
+	h.SetSecretsOnSynced(func() { debSecrets.Trigger("") })
 	h.SetResourceQuotasEventHandler(func(ns string) {
 		if a.isActive(contextName) {
 			debResourceQuotas.Trigger(ns)
@@ -658,6 +694,7 @@ func (a *App) Connect(contextName string, seq int64) error {
 		}
 	})
 	h.RescopeResourceQuotas(restoredNamespaces)
+	h.SetResourceQuotasOnSynced(func() { debResourceQuotas.Trigger("") })
 	h.SetLimitRangesEventHandler(func(ns string) {
 		if a.isActive(contextName) {
 			debLimitRanges.Trigger(ns)
@@ -665,6 +702,7 @@ func (a *App) Connect(contextName string, seq int64) error {
 		}
 	})
 	h.RescopeLimitRanges(restoredNamespaces)
+	h.SetLimitRangesOnSynced(func() { debLimitRanges.Trigger("") })
 	h.SetHorizontalPodAutoscalersEventHandler(func(ns string) {
 		if a.isActive(contextName) {
 			debHPAs.Trigger(ns)
@@ -672,6 +710,7 @@ func (a *App) Connect(contextName string, seq int64) error {
 		}
 	})
 	h.RescopeHorizontalPodAutoscalers(restoredNamespaces)
+	h.SetHorizontalPodAutoscalersOnSynced(func() { debHPAs.Trigger("") })
 	h.SetPodDisruptionBudgetsEventHandler(func(ns string) {
 		if a.isActive(contextName) {
 			debPodDisruptionBudgets.Trigger(ns)
@@ -679,6 +718,7 @@ func (a *App) Connect(contextName string, seq int64) error {
 		}
 	})
 	h.RescopePodDisruptionBudgets(restoredNamespaces)
+	h.SetPodDisruptionBudgetsOnSynced(func() { debPodDisruptionBudgets.Trigger("") })
 	h.SetIngressesEventHandler(func(ns string) {
 		if a.isActive(contextName) {
 			debIngresses.Trigger(ns)
@@ -686,6 +726,7 @@ func (a *App) Connect(contextName string, seq int64) error {
 		}
 	})
 	h.RescopeIngresses(restoredNamespaces)
+	h.SetIngressesOnSynced(func() { debIngresses.Trigger("") })
 	h.SetNetworkPoliciesEventHandler(func(ns string) {
 		if a.isActive(contextName) {
 			debNetworkPolicies.Trigger(ns)
@@ -693,9 +734,10 @@ func (a *App) Connect(contextName string, seq int64) error {
 		}
 	})
 	h.RescopeNetworkPolicies(restoredNamespaces)
-	h.Factory.Networking().V1().IngressClasses().Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj any) {
-			if a.isActive(contextName) {
+	h.SetNetworkPoliciesOnSynced(func() { debNetworkPolicies.Trigger("") })
+	h.Factory.Networking().V1().IngressClasses().Informer().AddEventHandler(cache.ResourceEventHandlerDetailedFuncs{
+		AddFunc: func(obj any, isInInitialList bool) {
+			if !isInInitialList && a.isActive(contextName) {
 				debIngressClasses.Trigger("")
 				debIngressClassDetail.Trigger("")
 			}
@@ -713,9 +755,9 @@ func (a *App) Connect(contextName string, seq int64) error {
 			}
 		},
 	})
-	h.Factory.Admissionregistration().V1().ValidatingWebhookConfigurations().Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj any) {
-			if a.isActive(contextName) {
+	h.Factory.Admissionregistration().V1().ValidatingWebhookConfigurations().Informer().AddEventHandler(cache.ResourceEventHandlerDetailedFuncs{
+		AddFunc: func(obj any, isInInitialList bool) {
+			if !isInInitialList && a.isActive(contextName) {
 				debValidatingWebhookConfigs.Trigger("")
 				debValidatingWebhookConfigDetail.Trigger("")
 			}
@@ -740,9 +782,10 @@ func (a *App) Connect(contextName string, seq int64) error {
 		}
 	})
 	h.RescopePersistentVolumeClaims(restoredNamespaces)
-	h.Factory.Core().V1().PersistentVolumes().Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj any) {
-			if a.isActive(contextName) {
+	h.SetPersistentVolumeClaimsOnSynced(func() { debPersistentVolumeClaims.Trigger("") })
+	h.Factory.Core().V1().PersistentVolumes().Informer().AddEventHandler(cache.ResourceEventHandlerDetailedFuncs{
+		AddFunc: func(obj any, isInInitialList bool) {
+			if !isInInitialList && a.isActive(contextName) {
 				debPersistentVolumes.Trigger("")
 				debPersistentVolumeDetail.Trigger("")
 			}
@@ -760,9 +803,9 @@ func (a *App) Connect(contextName string, seq int64) error {
 			}
 		},
 	})
-	h.Factory.Storage().V1().StorageClasses().Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj any) {
-			if a.isActive(contextName) {
+	h.Factory.Storage().V1().StorageClasses().Informer().AddEventHandler(cache.ResourceEventHandlerDetailedFuncs{
+		AddFunc: func(obj any, isInInitialList bool) {
+			if !isInInitialList && a.isActive(contextName) {
 				debStorageClasses.Trigger("")
 			}
 		},
@@ -784,6 +827,7 @@ func (a *App) Connect(contextName string, seq int64) error {
 		}
 	})
 	h.RescopeEndpoints(restoredNamespaces)
+	h.SetEndpointsOnSynced(func() { debEndpoints.Trigger("") })
 	h.SetServicesEventHandler(func(ns string) {
 		if a.isActive(contextName) {
 			debServices.Trigger(ns)
@@ -791,9 +835,10 @@ func (a *App) Connect(contextName string, seq int64) error {
 		}
 	})
 	h.RescopeServices(restoredNamespaces)
-	h.Factory.Core().V1().Nodes().Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj any) {
-			if a.isActive(contextName) {
+	h.SetServicesOnSynced(func() { debServices.Trigger("") })
+	h.Factory.Core().V1().Nodes().Informer().AddEventHandler(cache.ResourceEventHandlerDetailedFuncs{
+		AddFunc: func(obj any, isInInitialList bool) {
+			if !isInInitialList && a.isActive(contextName) {
 				debNodes.Trigger("")
 				debNodeDetail.Trigger("")
 			}
@@ -811,9 +856,9 @@ func (a *App) Connect(contextName string, seq int64) error {
 			}
 		},
 	})
-	h.Factory.Core().V1().Namespaces().Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj any) {
-			if a.isActive(contextName) {
+	h.Factory.Core().V1().Namespaces().Informer().AddEventHandler(cache.ResourceEventHandlerDetailedFuncs{
+		AddFunc: func(obj any, isInInitialList bool) {
+			if !isInInitialList && a.isActive(contextName) {
 				debNamespaces.Trigger("")
 				debNamespaceDetail.Trigger("")
 			}
@@ -838,9 +883,10 @@ func (a *App) Connect(contextName string, seq int64) error {
 		}
 	})
 	h.RescopeServiceAccounts(restoredNamespaces)
-	h.Factory.Rbac().V1().ClusterRoles().Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj any) {
-			if a.isActive(contextName) {
+	h.SetServiceAccountsOnSynced(func() { debServiceAccounts.Trigger("") })
+	h.Factory.Rbac().V1().ClusterRoles().Informer().AddEventHandler(cache.ResourceEventHandlerDetailedFuncs{
+		AddFunc: func(obj any, isInInitialList bool) {
+			if !isInInitialList && a.isActive(contextName) {
 				debClusterRoles.Trigger("")
 				debClusterRoleDetail.Trigger("")
 			}
@@ -865,9 +911,10 @@ func (a *App) Connect(contextName string, seq int64) error {
 		}
 	})
 	h.RescopeRoles(restoredNamespaces)
-	h.Factory.Rbac().V1().ClusterRoleBindings().Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj any) {
-			if a.isActive(contextName) {
+	h.SetRolesOnSynced(func() { debRoles.Trigger("") })
+	h.Factory.Rbac().V1().ClusterRoleBindings().Informer().AddEventHandler(cache.ResourceEventHandlerDetailedFuncs{
+		AddFunc: func(obj any, isInInitialList bool) {
+			if !isInInitialList && a.isActive(contextName) {
 				debClusterRoleBindings.Trigger("")
 				debClusterRoleBindingDetail.Trigger("")
 			}
@@ -892,9 +939,10 @@ func (a *App) Connect(contextName string, seq int64) error {
 		}
 	})
 	h.RescopeRoleBindings(restoredNamespaces)
-	h.Factory.Scheduling().V1().PriorityClasses().Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj any) {
-			if a.isActive(contextName) {
+	h.SetRoleBindingsOnSynced(func() { debRoleBindings.Trigger("") })
+	h.Factory.Scheduling().V1().PriorityClasses().Informer().AddEventHandler(cache.ResourceEventHandlerDetailedFuncs{
+		AddFunc: func(obj any, isInInitialList bool) {
+			if !isInInitialList && a.isActive(contextName) {
 				debPriorityClasses.Trigger("")
 			}
 		},
@@ -915,6 +963,7 @@ func (a *App) Connect(contextName string, seq int64) error {
 		}
 	})
 	h.RescopeLeases(restoredNamespaces)
+	h.SetLeasesOnSynced(func() { debLeases.Trigger("") })
 	h.SetEventsEventHandler(func(ns string) {
 		if a.isActive(contextName) {
 			debEvents.Trigger(ns)
@@ -922,12 +971,14 @@ func (a *App) Connect(contextName string, seq int64) error {
 		}
 	})
 	h.RescopeEvents(restoredNamespaces)
+	h.SetEventsOnSynced(func() { debEvents.Trigger("") })
 	h.SetEndpointSlicesEventHandler(func(ns string) {
 		if a.isActive(contextName) {
 			debEndpointSlices.Trigger(ns)
 		}
 	})
 	h.RescopeEndpointSlices(restoredNamespaces)
+	h.SetEndpointSlicesOnSynced(func() { debEndpointSlices.Trigger("") })
 
 	// Create (or replace) metrics client for this context.
 	if mc, err := kube.NewMetricsClientForContext(contextName, httpProxy, httpsProxy, a.settings.KubeconfigPaths); err == nil {

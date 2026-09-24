@@ -69,7 +69,7 @@ minikube addons enable metrics-server
 
 ### Core backend patterns
 
-- **Watch, don't poll.** `SharedInformerFactory` caches K8s objects; `lister.Xxxs(ns).List(...)` reads from the in-memory cache, zero API round trips. `kube.NewFactoryHandle` blocks (≤30s) until every informer's initial LIST has synced before `Connect()` unblocks the frontend's first queries.
+- **Watch, don't poll.** `SharedInformerFactory` caches K8s objects; `lister.Xxxs(ns).List(...)` reads from the in-memory cache, zero API round trips. `kube.NewFactoryHandle` returns immediately and each resource's cache is warmed asynchronously — callers must wait on `GetSyncedChan(resource)` (or the `waitForResourceSync*` helpers) before reading a lister.
 - **Namespace-scoped list reads**: every `List<Kind>()`/`Get<Kind>Summary()` unions per-namespace `lister.Xxxs(ns).List(...)` calls over `activeNamespaces` instead of reading the whole cluster-wide cache and post-filtering — narrowing the namespace selection actually reduces work. `activeNamespaces` is documented as `empty/nil = all namespaces` (`internal/app/app.go`) and defaults to empty on connect, so every such function must fall back to a plain `lister.List(labels.Everything())` when `namespaces` is empty — skipping that fallback breaks the default all-namespaces view.
 - **Detail reads** use `Get<Resource>ByName(namespace, name)` → `lister.Xxxs(ns).Get(name)`, never `ListXxx().find(...)`.
 - **Push updates via Wails events**, not polling: Go emits (`runtime.EventsEmit(a.ctx, "pods:update", pods)`), the frontend's per-resource `useXxxUpdateEvents` hook subscribes and the owning data-access hook merges the pushed payload over its `useQuery` result locally (no global cache-write hook).

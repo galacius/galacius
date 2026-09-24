@@ -7,7 +7,6 @@ import (
 
 	kubeResources "github.com/galacius/galacius/internal/kube/resources"
 	"github.com/galacius/galacius/packages/core/kube/dto"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -48,7 +47,7 @@ func (a *App) emitNetworkPolicyDetail() {
 	if err != nil {
 		return
 	}
-	runtime.EventsEmit(a.ctx, "networkpolicy:update", detail)
+	a.emitPump.Enqueue("networkpolicy:update", func() any { return detail })
 }
 
 func (a *App) GetNetworkPolicyByName(namespace, name string) (*dto.NetworkPolicyDetail, error) {
@@ -116,7 +115,7 @@ func (a *App) emitNetworkPolicies() {
 		log.Printf("app: emitNetworkPolicies: %v", err)
 		return
 	}
-	runtime.EventsEmit(a.ctx, "networkpolicies:update", data)
+	a.emitPump.Enqueue("networkpolicies:update", func() any { return data })
 }
 
 func (a *App) GetNetworkPolicyYAML(namespace, name string) (string, error) {

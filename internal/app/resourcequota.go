@@ -7,7 +7,6 @@ import (
 
 	kubeResources "github.com/galacius/galacius/internal/kube/resources"
 	"github.com/galacius/galacius/packages/core/kube/dto"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -49,7 +48,7 @@ func (a *App) emitResourceQuotaDetail() {
 	if err != nil {
 		return
 	}
-	runtime.EventsEmit(a.ctx, "resourcequota:update", detail)
+	a.emitPump.Enqueue("resourcequota:update", func() any { return detail })
 }
 
 func (a *App) ListResourceQuotas() ([]dto.ResourceQuota, error) {
@@ -161,7 +160,7 @@ func (a *App) emitResourceQuotas() {
 		log.Printf("app: emitResourceQuotas: %v", err)
 		return
 	}
-	runtime.EventsEmit(a.ctx, "resourcequotas:update", data)
+	a.emitPump.Enqueue("resourcequotas:update", func() any { return data })
 }
 
 func (a *App) GetResourceQuotaYAML(namespace, name string) (string, error) {

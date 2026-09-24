@@ -7,7 +7,6 @@ import (
 
 	kubeResources "github.com/galacius/galacius/internal/kube/resources"
 	"github.com/galacius/galacius/packages/core/kube/dto"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -48,7 +47,7 @@ func (a *App) emitPersistentVolumeClaimDetail() {
 	if err != nil {
 		return
 	}
-	runtime.EventsEmit(a.ctx, "pvc:update", detail)
+	a.emitPump.Enqueue("pvc:update", func() any { return detail })
 }
 
 func (a *App) ListPersistentVolumeClaims() ([]dto.PersistentVolumeClaim, error) {
@@ -98,7 +97,7 @@ func (a *App) emitPersistentVolumeClaims() {
 		log.Printf("app: emitPersistentVolumeClaims: %v", err)
 		return
 	}
-	runtime.EventsEmit(a.ctx, "pvcs:update", data)
+	a.emitPump.Enqueue("pvcs:update", func() any { return data })
 }
 
 // DeletePersistentVolumeClaim deletes a PersistentVolumeClaim from the specified namespace.

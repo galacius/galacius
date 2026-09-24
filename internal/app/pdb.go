@@ -7,7 +7,6 @@ import (
 
 	kubeResources "github.com/galacius/galacius/internal/kube/resources"
 	"github.com/galacius/galacius/packages/core/kube/dto"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 	policyv1 "k8s.io/api/policy/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -48,7 +47,7 @@ func (a *App) emitPodDisruptionBudgetDetail() {
 	if err != nil {
 		return
 	}
-	runtime.EventsEmit(a.ctx, "pdb:update", detail)
+	a.emitPump.Enqueue("pdb:update", func() any { return detail })
 }
 
 func (a *App) GetPodDisruptionBudgetByName(namespace, name string) (*dto.PodDisruptionBudgetDetail, error) {
@@ -79,7 +78,7 @@ func (a *App) emitPodDisruptionBudgets() {
 		log.Printf("app: emitPodDisruptionBudgets: %v", err)
 		return
 	}
-	runtime.EventsEmit(a.ctx, "pdbs:update", data)
+	a.emitPump.Enqueue("pdbs:update", func() any { return data })
 }
 
 // DeletePodDisruptionBudget deletes a PodDisruptionBudget from the specified namespace.

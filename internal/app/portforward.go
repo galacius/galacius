@@ -9,9 +9,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/galacius/galacius/internal/kube"
 	"github.com/galacius/galacius/packages/core/kube/dto"
+	"github.com/google/uuid"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -37,6 +37,16 @@ func validateLocalPort(port string) error {
 	return nil
 }
 
+// isPodReady checks if a pod is in Ready condition by looking at its conditions list.
+func isPodReady(pod *corev1.Pod) bool {
+	for _, condition := range pod.Status.Conditions {
+		if condition.Type == corev1.PodReady && condition.Status == corev1.ConditionTrue {
+			return true
+		}
+	}
+	return false
+}
+
 func (a *App) resolvePodName(factory *kube.FactoryHandle, namespace, kind, name string) (string, error) {
 	if kind == "pod" {
 		return name, nil
@@ -44,7 +54,32 @@ func (a *App) resolvePodName(factory *kube.FactoryHandle, namespace, kind, name 
 	if kind != "service" {
 		return "", fmt.Errorf("unsupported kind: %q (must be \"pod\" or \"service\")", kind)
 	}
-	svc, err := factory.Factory.Core().V1().Services().Lister().Services(namespace).Get(name)
+
+	// Check namespace against active filter before querying listers
+	_, activeNamespaces := a.activeFactoryAndNamespaces()
+	if len(activeNamespaces) > 0 {
+		// Non-empty activeNamespaces means a filter is active; check if namespace is in it
+		namespaceInFilter := false
+		for _, ns := range activeNamespaces {
+			if ns == namespace {
+				namespaceInFilter = true
+				break
+			}
+		}
+		if !namespaceInFilter {
+			return "", fmt.Errorf("namespace %q is not in the active namespace filter", namespace)
+		}
+	}
+
+	// Wait for services and pods caches to sync before reading listers
+	if !waitForResourceSyncWithTimeout(factory, "services", 10*time.Second) {
+		return "", fmt.Errorf("service cache is still loading — please retry in a moment")
+	}
+	if !waitForResourceSyncWithTimeout(factory, "pods", 10*time.Second) {
+		return "", fmt.Errorf("pod/service cache is still loading — please retry in a moment")
+	}
+
+	svc, err := factory.ServiceLister().Services(namespace).Get(name)
 	if err != nil {
 		return "", fmt.Errorf("service %s/%s not found: %w", namespace, name, err)
 	}
@@ -52,16 +87,20 @@ func (a *App) resolvePodName(factory *kube.FactoryHandle, namespace, kind, name 
 		return "", fmt.Errorf("service %s/%s has no selector", namespace, name)
 	}
 	sel := labels.Set(svc.Spec.Selector).AsSelector()
-	pods, err := factory.Factory.Core().V1().Pods().Lister().Pods(namespace).List(sel)
+	pods, err := factory.PodLister().Pods(namespace).List(sel)
 	if err != nil || len(pods) == 0 {
 		return "", fmt.Errorf("no pods found for service %s/%s", namespace, name)
 	}
+
+	// Find a pod that is both Running and Ready
 	for _, p := range pods {
-		if p.Status.Phase == corev1.PodRunning {
+		if p.Status.Phase == corev1.PodRunning && isPodReady(p) {
 			return p.Name, nil
 		}
 	}
-	return pods[0].Name, nil
+
+	// No running and ready pod found
+	return "", fmt.Errorf("no running and ready pod found backing service %s/%s", namespace, name)
 }
 
 func (a *App) monitorPortForward(id string, errCh <-chan error, cancel context.CancelFunc) {
@@ -107,7 +146,13 @@ func resolveNamedPort(factory *kube.FactoryHandle, namespace, podName, targetPor
 	if _, err := strconv.Atoi(targetPort); err == nil {
 		return targetPort, nil
 	}
-	pod, err := factory.Factory.Core().V1().Pods().Lister().Pods(namespace).Get(podName)
+
+	// Wait for pods cache to sync before reading lister
+	if !waitForResourceSyncWithTimeout(factory, "pods", 10*time.Second) {
+		return "", fmt.Errorf("pod cache is still loading — please retry in a moment")
+	}
+
+	pod, err := factory.PodLister().Pods(namespace).Get(podName)
 	if err != nil {
 		return "", fmt.Errorf("pod %s/%s not found: %w", namespace, podName, err)
 	}
@@ -130,13 +175,6 @@ func (a *App) StartPortForward(namespace, kind, name, podPort, localPort, protoc
 
 	if err := validateLocalPort(localPort); err != nil {
 		return zero, err
-	}
-
-	a.pfMu.RLock()
-	count := len(a.portForwards)
-	a.pfMu.RUnlock()
-	if count >= maxPortForwardSessions {
-		return zero, fmt.Errorf("maximum of %d concurrent port-forward sessions reached", maxPortForwardSessions)
 	}
 
 	a.mu.RLock()
@@ -199,7 +237,13 @@ func (a *App) StartPortForward(namespace, kind, name, podPort, localPort, protoc
 		if ports, err := pfw.GetPorts(); err == nil && len(ports) > 0 {
 			actualLocalPort = strconv.Itoa(int(ports[0].Local))
 		}
+		// Check and register atomically to prevent exceeding maxPortForwardSessions
 		a.pfMu.Lock()
+		if len(a.portForwards) >= maxPortForwardSessions {
+			a.pfMu.Unlock()
+			pfCancel()
+			return zero, fmt.Errorf("maximum of %d concurrent port-forward sessions reached", maxPortForwardSessions)
+		}
 		a.portForwards[id] = dto.PortForward{
 			ID: id, Name: name, Namespace: namespace, Kind: kind,
 			PodPort: resolvedPodPort, TargetPort: podPort, ServicePort: servicePort, LocalPort: actualLocalPort,

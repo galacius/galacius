@@ -8,7 +8,6 @@ import (
 
 	kubeResources "github.com/galacius/galacius/internal/kube/resources"
 	"github.com/galacius/galacius/packages/core/kube/dto"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -150,7 +149,7 @@ func (a *App) emitIngressClasses() {
 		log.Printf("app: emitIngressClasses: %v", err)
 		return
 	}
-	runtime.EventsEmit(a.ctx, "ingressclasses:update", data)
+	a.emitPump.Enqueue("ingressclasses:update", func() any { return data })
 }
 
 func (a *App) GetIngressClassYAML(name string) (string, error) {
@@ -228,5 +227,5 @@ func (a *App) emitIngressClassDetail() {
 	if err != nil {
 		return
 	}
-	runtime.EventsEmit(a.ctx, "ingressclass:update", detail)
+	a.emitPump.Enqueue("ingressclass:update", func() any { return detail })
 }

@@ -9,6 +9,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes/fake"
 )
 
@@ -691,4 +692,111 @@ func TestMultipleFactoriesContextSwitch(t *testing.T) {
 	if len(pods2) != 1 || pods2[0].Name != "cluster2-pod" {
 		t.Fatalf("expected cluster2-pod from cluster2, got %v", pods2)
 	}
+}
+
+// TestStartPortForward_WaitsForPodSync verifies that StartPortForward gates on
+// both pods and services cache sync before attempting to resolve pod names.
+// This tests that resolvePodName and resolveNamedPort block on GetSyncedChan
+// until the caches are warmed, preventing "pod not found" race conditions.
+func TestStartPortForward_WaitsForPodSync(t *testing.T) {
+	objs := []runtime.Object{
+		&v1.Service{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-svc",
+				Namespace: "default",
+			},
+			Spec: v1.ServiceSpec{
+				Selector: map[string]string{"app": "test"},
+				Ports: []v1.ServicePort{
+					{
+						Name:       "http",
+						Port:       80,
+						TargetPort: intstr.FromInt(8080),
+					},
+				},
+			},
+		},
+		&v1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-pod",
+				Namespace: "default",
+				Labels:    map[string]string{"app": "test"},
+			},
+			Status: v1.PodStatus{
+				Phase: v1.PodRunning,
+				Conditions: []v1.PodCondition{
+					{
+						Type:   v1.PodReady,
+						Status: v1.ConditionTrue,
+					},
+				},
+			},
+		},
+	}
+
+	cs := fake.NewSimpleClientset(objs...)
+	h := kube.NewFactoryHandle(cs, func(string, string) {})
+	defer h.Stop()
+
+	a := &App{
+		factories:     map[string]*kube.FactoryHandle{"test-ctx": h},
+		activeContext: "test-ctx",
+		mu:            sync.RWMutex{},
+	}
+
+	// resolvePodName should successfully resolve a service to a pod
+	// after waiting for cache sync.
+	podName, err := a.resolvePodName(h, "default", "service", "test-svc")
+	if err != nil {
+		t.Fatalf("resolvePodName unexpected error: %v", err)
+	}
+	if podName != "test-pod" {
+		t.Fatalf("expected pod name 'test-pod', got %q", podName)
+	}
+}
+
+// TestStartPortForward_NamespaceFilterCheck verifies that resolvePodName
+// rejects queries for namespaces not in the active namespace filter.
+func TestStartPortForward_NamespaceFilterCheck(t *testing.T) {
+	objs := []runtime.Object{
+		&v1.Service{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-svc",
+				Namespace: "other-ns",
+			},
+			Spec: v1.ServiceSpec{
+				Selector: map[string]string{"app": "test"},
+			},
+		},
+	}
+
+	cs := fake.NewSimpleClientset(objs...)
+	h := kube.NewFactoryHandle(cs, func(string, string) {})
+	defer h.Stop()
+
+	a := &App{
+		factories:        map[string]*kube.FactoryHandle{"test-ctx": h},
+		activeContext:    "test-ctx",
+		activeNamespaces: []string{"default"}, // Restrict to default namespace
+		mu:               sync.RWMutex{},
+	}
+
+	// resolvePodName should reject the query because "other-ns" is not in activeNamespaces.
+	_, err := a.resolvePodName(h, "other-ns", "service", "test-svc")
+	if err == nil {
+		t.Fatalf("expected error for namespace not in filter, got nil")
+	}
+	if !stringContains(err.Error(), "not in the active namespace filter") {
+		t.Fatalf("expected 'not in the active namespace filter' error, got: %v", err)
+	}
+}
+
+// stringContains checks if a string contains a substring.
+func stringContains(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }

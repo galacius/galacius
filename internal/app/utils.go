@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/galacius/galacius/internal/kube"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -114,6 +115,22 @@ func waitForResourceSyncIgnoringForbidden(h *kube.FactoryHandle, resource string
 	}
 	<-h.GetSyncedChan(resource)
 	return true
+}
+
+// waitForResourceSyncWithTimeout waits up to timeout for the resource's informer cache to sync.
+// Returns true if synced within timeout, false otherwise. Captures the sync channel once
+// (a namespace rescope mid-wait would otherwise swap in a fresh channel/timer).
+func waitForResourceSyncWithTimeout(h *kube.FactoryHandle, resource string, timeout time.Duration) bool {
+	if h == nil {
+		return false
+	}
+	ch := h.GetSyncedChan(resource)
+	select {
+	case <-ch:
+		return true
+	case <-time.After(timeout):
+		return false
+	}
 }
 
 // deleteRefsBestEffort deletes each item in items via deleteFn, continuing

@@ -9,7 +9,6 @@ import (
 	"github.com/galacius/galacius/internal/kube"
 	kubeResources "github.com/galacius/galacius/internal/kube/resources"
 	"github.com/galacius/galacius/packages/core/kube/dto"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -63,7 +62,7 @@ func (a *App) emitNodes() {
 		defer cancel()
 		nodes = kubeResources.ApplyNodeMetrics(nodes, kube.FetchNodeMetrics(ctx, mc))
 	}
-	runtime.EventsEmit(a.ctx, "nodes:update", nodes)
+	a.emitPump.Enqueue("nodes:update", func() any { return nodes })
 }
 
 func (a *App) DeleteNode(name string) error {
@@ -307,5 +306,5 @@ func (a *App) emitNodeDetail() {
 	if err != nil {
 		return
 	}
-	runtime.EventsEmit(a.ctx, "node:update", detail)
+	a.emitPump.Enqueue("node:update", func() any { return detail })
 }

@@ -9,7 +9,6 @@ import (
 
 	kubeResources "github.com/galacius/galacius/internal/kube/resources"
 	"github.com/galacius/galacius/packages/core/kube/dto"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 	batchv1 "k8s.io/api/batch/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -84,7 +83,7 @@ func (a *App) emitCronJobs() {
 		log.Printf("app: emitCronJobs: %v", err)
 		return
 	}
-	runtime.EventsEmit(a.ctx, "cronjobs:update", data)
+	a.emitPump.Enqueue("cronjobs:update", func() any { return data })
 }
 
 // DeleteCronJob deletes a CronJob from the specified namespace.
@@ -276,5 +275,5 @@ func (a *App) emitCronJobDetail() {
 	if err != nil {
 		return
 	}
-	runtime.EventsEmit(a.ctx, "cronjob:update", detail)
+	a.emitPump.Enqueue("cronjob:update", func() any { return detail })
 }

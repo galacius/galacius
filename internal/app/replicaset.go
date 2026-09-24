@@ -8,7 +8,6 @@ import (
 
 	kubeResources "github.com/galacius/galacius/internal/kube/resources"
 	"github.com/galacius/galacius/packages/core/kube/dto"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -142,7 +141,7 @@ func (a *App) emitReplicaSets() {
 		log.Printf("app: emitReplicaSets: %v", err)
 		return
 	}
-	runtime.EventsEmit(a.ctx, "replicasets:update", data)
+	a.emitPump.Enqueue("replicasets:update", func() any { return data })
 }
 
 func (a *App) GetReplicaSetYAML(namespace, name string) (string, error) {
@@ -219,5 +218,5 @@ func (a *App) emitReplicaSetDetail() {
 	if err != nil {
 		return
 	}
-	runtime.EventsEmit(a.ctx, "replicaset:update", detail)
+	a.emitPump.Enqueue("replicaset:update", func() any { return detail })
 }
