@@ -288,9 +288,9 @@ func (a *App) handleProxyLost(contextName, message string) {
 // Connect builds (or reuses) a clientset for the given context, probes the API
 // server, and marks the context active. The ping runs outside the lock so a
 // slow or unreachable cluster never blocks other goroutines reading the cache.
-// NewFactoryHandle blocks until every informer's initial LIST has populated
-// its cache, so activeContext is only set — and the frontend's first
-// List*/Get* calls only unblocked — once listers are warm.
+// NewFactoryHandle returns immediately; each resource's cache is warmed
+// asynchronously. Callers must wait on GetSyncedChan(resource) or the
+// waitForResourceSync* helpers before reading a lister.
 //
 // seq is a value the frontend increments synchronously on every call (before
 // the async IPC dispatch), same pattern as SetActiveNamespaces: rapid
