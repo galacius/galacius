@@ -7,7 +7,6 @@ import (
 
 	kubeResources "github.com/galacius/galacius/internal/kube/resources"
 	"github.com/galacius/galacius/packages/core/kube/dto"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -92,7 +91,7 @@ func (a *App) emitEndpoints() {
 		log.Printf("app: emitEndpoints: %v", err)
 		return
 	}
-	runtime.EventsEmit(a.ctx, "endpoints:update", data)
+	a.emitPump.Enqueue("endpoints:update", func() any { return data })
 }
 
 func (a *App) GetEndpointYAML(namespace, name string) (string, error) {
@@ -170,5 +169,5 @@ func (a *App) emitEndpointDetail() {
 	if err != nil {
 		return
 	}
-	runtime.EventsEmit(a.ctx, "endpoint:update", detail)
+	a.emitPump.Enqueue("endpoint:update", func() any { return detail })
 }

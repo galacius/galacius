@@ -7,7 +7,6 @@ import (
 
 	kubeResources "github.com/galacius/galacius/internal/kube/resources"
 	"github.com/galacius/galacius/packages/core/kube/dto"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 	coordinationv1 "k8s.io/api/coordination/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -89,7 +88,7 @@ func (a *App) emitLeases() {
 		log.Printf("app: emitLeases: %v", err)
 		return
 	}
-	runtime.EventsEmit(a.ctx, "leases:update", data)
+	a.emitPump.Enqueue("leases:update", func() any { return data })
 }
 
 func (a *App) GetLeaseYAML(namespace, name string) (string, error) {

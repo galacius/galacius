@@ -7,7 +7,6 @@ import (
 
 	kubeResources "github.com/galacius/galacius/internal/kube/resources"
 	"github.com/galacius/galacius/packages/core/kube/dto"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -92,7 +91,7 @@ func (a *App) emitServices() {
 		log.Printf("app: emitServices: %v", err)
 		return
 	}
-	runtime.EventsEmit(a.ctx, "services:update", data)
+	a.emitPump.Enqueue("services:update", func() any { return data })
 }
 
 func (a *App) GetServiceYAML(namespace, name string) (string, error) {
@@ -169,5 +168,5 @@ func (a *App) emitServiceDetail() {
 	if err != nil {
 		return
 	}
-	runtime.EventsEmit(a.ctx, "service:update", detail)
+	a.emitPump.Enqueue("service:update", func() any { return detail })
 }

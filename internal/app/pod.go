@@ -8,7 +8,6 @@ import (
 	"github.com/galacius/galacius/internal/kube"
 	kubeResources "github.com/galacius/galacius/internal/kube/resources"
 	"github.com/galacius/galacius/packages/core/kube/dto"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -87,7 +86,7 @@ func (a *App) emitPodDetail() {
 	if err != nil {
 		return
 	}
-	runtime.EventsEmit(a.ctx, "pod:update", detail)
+	a.emitPump.Enqueue("pod:update", func() any { return detail })
 }
 
 func (a *App) GetPodsSummary() (dto.PodSummary, error) {
@@ -142,7 +141,7 @@ func (a *App) emitPodsWithMetrics(allMetrics map[string]dto.PodUsage) {
 	if allMetrics != nil {
 		pods = kubeResources.ApplyPodMetrics(pods, allMetrics)
 	}
-	runtime.EventsEmit(a.ctx, "pods:update", pods)
+	a.emitPump.Enqueue("pods:update", func() any { return pods })
 
 	if allMetrics == nil && mc != nil {
 		go func() {
@@ -155,7 +154,7 @@ func (a *App) emitPodsWithMetrics(allMetrics map[string]dto.PodUsage) {
 			fetchedMetrics := kube.FetchPodMetrics(ctx, mc, metricsNamespace)
 			if fetchedMetrics != nil {
 				podsWithMetrics := kubeResources.ApplyPodMetrics(pods, fetchedMetrics)
-				runtime.EventsEmit(a.ctx, "pods:update", podsWithMetrics)
+				a.emitPump.Enqueue("pods:update", func() any { return podsWithMetrics })
 			}
 		}()
 	}

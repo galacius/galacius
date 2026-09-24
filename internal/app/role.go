@@ -7,7 +7,6 @@ import (
 
 	kubeResources "github.com/galacius/galacius/internal/kube/resources"
 	"github.com/galacius/galacius/packages/core/kube/dto"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -58,7 +57,7 @@ func (a *App) emitRoles() {
 		log.Printf("app: emitRoles: %v", err)
 		return
 	}
-	runtime.EventsEmit(a.ctx, "roles:update", data)
+	a.emitPump.Enqueue("roles:update", func() any { return data })
 }
 
 func (a *App) DeleteRole(namespace, name string) error {
@@ -173,5 +172,5 @@ func (a *App) emitRoleDetail() {
 	if err != nil {
 		return
 	}
-	runtime.EventsEmit(a.ctx, "role:update", detail)
+	a.emitPump.Enqueue("role:update", func() any { return detail })
 }

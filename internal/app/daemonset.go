@@ -9,7 +9,6 @@ import (
 
 	kubeResources "github.com/galacius/galacius/internal/kube/resources"
 	"github.com/galacius/galacius/packages/core/kube/dto"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -151,7 +150,7 @@ func (a *App) emitDaemonSets() {
 		log.Printf("app: emitDaemonSets: %v", err)
 		return
 	}
-	runtime.EventsEmit(a.ctx, "daemonsets:update", data)
+	a.emitPump.Enqueue("daemonsets:update", func() any { return data })
 }
 
 func (a *App) GetDaemonSetYAML(namespace, name string) (string, error) {
@@ -228,5 +227,5 @@ func (a *App) emitDaemonSetDetail() {
 	if err != nil {
 		return
 	}
-	runtime.EventsEmit(a.ctx, "daemonset:update", detail)
+	a.emitPump.Enqueue("daemonset:update", func() any { return detail })
 }

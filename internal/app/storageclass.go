@@ -7,7 +7,6 @@ import (
 
 	kubeResources "github.com/galacius/galacius/internal/kube/resources"
 	"github.com/galacius/galacius/packages/core/kube/dto"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -54,7 +53,7 @@ func (a *App) emitStorageClasses() {
 		log.Printf("app: emitStorageClasses: %v", err)
 		return
 	}
-	runtime.EventsEmit(a.ctx, "storageclasses:update", data)
+	a.emitPump.Enqueue("storageclasses:update", func() any { return data })
 }
 
 // DeleteStorageClass deletes a StorageClass.

@@ -7,7 +7,6 @@ import (
 
 	kubeResources "github.com/galacius/galacius/internal/kube/resources"
 	"github.com/galacius/galacius/packages/core/kube/dto"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -51,7 +50,7 @@ func (a *App) emitValidatingWebhookConfigDetail() {
 	if err != nil {
 		return
 	}
-	runtime.EventsEmit(a.ctx, "validatingwebhookconfig:update", detail)
+	a.emitPump.Enqueue("validatingwebhookconfig:update", func() any { return detail })
 }
 
 func (a *App) GetValidatingWebhookConfigByName(name string) (*dto.ValidatingWebhookConfigDetail, error) {
@@ -119,7 +118,7 @@ func (a *App) emitValidatingWebhookConfigs() {
 		log.Printf("app: emitValidatingWebhookConfigs: %v", err)
 		return
 	}
-	runtime.EventsEmit(a.ctx, "validatingwebhookconfigs:update", data)
+	a.emitPump.Enqueue("validatingwebhookconfigs:update", func() any { return data })
 }
 
 func (a *App) GetValidatingWebhookConfigYAML(name string) (string, error) {

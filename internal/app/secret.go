@@ -8,7 +8,6 @@ import (
 
 	kubeResources "github.com/galacius/galacius/internal/kube/resources"
 	"github.com/galacius/galacius/packages/core/kube/dto"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -51,7 +50,7 @@ func (a *App) emitSecretDetail() {
 	if err != nil {
 		return
 	}
-	runtime.EventsEmit(a.ctx, "secret:update", detail)
+	a.emitPump.Enqueue("secret:update", func() any { return detail })
 }
 
 func (a *App) ListSecrets() ([]dto.Secret, error) {
@@ -158,7 +157,7 @@ func (a *App) emitSecrets() {
 		log.Printf("app: emitSecrets: %v", err)
 		return
 	}
-	runtime.EventsEmit(a.ctx, "secrets:update", data)
+	a.emitPump.Enqueue("secrets:update", func() any { return data })
 }
 
 func (a *App) GetSecretYAML(namespace, name string) (string, error) {

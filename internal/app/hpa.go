@@ -7,7 +7,6 @@ import (
 
 	kubeResources "github.com/galacius/galacius/internal/kube/resources"
 	"github.com/galacius/galacius/packages/core/kube/dto"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -52,7 +51,7 @@ func (a *App) emitHPADetail() {
 	if err != nil {
 		return
 	}
-	runtime.EventsEmit(a.ctx, "hpa:update", detail)
+	a.emitPump.Enqueue("hpa:update", func() any { return detail })
 }
 
 func (a *App) ListHPAs() ([]dto.HPA, error) {
@@ -79,7 +78,7 @@ func (a *App) emitHPAs() {
 		log.Printf("app: emitHPAs: %v", err)
 		return
 	}
-	runtime.EventsEmit(a.ctx, "hpas:update", data)
+	a.emitPump.Enqueue("hpas:update", func() any { return data })
 }
 
 // DeleteHPA deletes an HPA from the specified namespace.

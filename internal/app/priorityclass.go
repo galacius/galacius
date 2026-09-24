@@ -7,7 +7,6 @@ import (
 
 	kubeResources "github.com/galacius/galacius/internal/kube/resources"
 	"github.com/galacius/galacius/packages/core/kube/dto"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -95,7 +94,7 @@ func (a *App) emitPriorityClasses() {
 		log.Printf("app: emitPriorityClasses: %v", err)
 		return
 	}
-	runtime.EventsEmit(a.ctx, "priorityclasses:update", data)
+	a.emitPump.Enqueue("priorityclasses:update", func() any { return data })
 }
 
 func (a *App) GetPriorityClassYAML(name string) (string, error) {

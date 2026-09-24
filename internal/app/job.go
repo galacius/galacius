@@ -7,7 +7,6 @@ import (
 
 	kubeResources "github.com/galacius/galacius/internal/kube/resources"
 	"github.com/galacius/galacius/packages/core/kube/dto"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 	batchv1 "k8s.io/api/batch/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -81,7 +80,7 @@ func (a *App) emitJobs() {
 		log.Printf("app: emitJobs: %v", err)
 		return
 	}
-	runtime.EventsEmit(a.ctx, "jobs:update", data)
+	a.emitPump.Enqueue("jobs:update", func() any { return data })
 }
 
 // DeleteJob deletes a Job from the specified namespace.
@@ -199,5 +198,5 @@ func (a *App) emitJobDetail() {
 	if err != nil {
 		return
 	}
-	runtime.EventsEmit(a.ctx, "job:update", detail)
+	a.emitPump.Enqueue("job:update", func() any { return detail })
 }

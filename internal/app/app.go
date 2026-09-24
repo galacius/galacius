@@ -10,6 +10,7 @@ import (
 	"github.com/galacius/galacius/internal/config"
 	"github.com/galacius/galacius/internal/kube"
 	"github.com/galacius/galacius/internal/lib/debouncer"
+	"github.com/galacius/galacius/internal/lib/emitpump"
 	"github.com/galacius/galacius/internal/plugin"
 	"github.com/galacius/galacius/internal/proxy"
 	"github.com/galacius/galacius/internal/updater"
@@ -74,6 +75,7 @@ type App struct {
 	grpcServerCfg   *hostgrpc.GRPCServerConfig
 	proxyManagers   map[string]*proxy.Manager
 	proxyManagersMu sync.RWMutex
+	emitPump        *emitpump.EmitPump // serializes and coalesces wailsruntime.EventsEmit calls
 
 	// watchedSecret/watchedResourceQuota/watchedPersistentVolumeClaim/... track
 	// the resource currently shown in that kind's (single) open detail drawer,
@@ -156,6 +158,9 @@ func NewApp(version string) *App {
 // see NOT_INSTALLED for an already-installed plugin.
 func (a *App) Startup(ctx context.Context) {
 	a.ctx = ctx
+	a.emitPump = emitpump.New(ctx, func(eventName string, payload any) {
+		wailsruntime.EventsEmit(a.ctx, eventName, payload)
+	})
 	a.appSizeBytes = getAppSizeBytes()
 	a.detectInstallSource()
 	a.restoreInstalledPlugins()

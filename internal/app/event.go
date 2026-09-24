@@ -6,7 +6,6 @@ import (
 
 	kubeResources "github.com/galacius/galacius/internal/kube/resources"
 	"github.com/galacius/galacius/packages/core/kube/dto"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 func sortEventsDesc(events []dto.Event) {
@@ -83,8 +82,8 @@ func (a *App) emitEvents() {
 		return
 	}
 	sortEventsDesc(data)
-	runtime.EventsEmit(a.ctx, "events:update", data)
-	runtime.EventsEmit(a.ctx, "events:warning:update", warningEvents(data))
+	a.emitPump.Enqueue("events:update", func() any { return data })
+	a.emitPump.Enqueue("events:warning:update", func() any { return warningEvents(data) })
 }
 
 // WatchEventDetail registers the frontend's interest in live "event:update"
@@ -116,5 +115,5 @@ func (a *App) emitEventDetail() {
 	if err != nil {
 		return
 	}
-	runtime.EventsEmit(a.ctx, "event:update", detail)
+	a.emitPump.Enqueue("event:update", func() any { return detail })
 }

@@ -8,7 +8,6 @@ import (
 
 	kubeResources "github.com/galacius/galacius/internal/kube/resources"
 	"github.com/galacius/galacius/packages/core/kube/dto"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	resource_api "k8s.io/apimachinery/pkg/api/resource"
@@ -50,7 +49,7 @@ func (a *App) emitLimitRangeDetail() {
 	if err != nil {
 		return
 	}
-	runtime.EventsEmit(a.ctx, "limitrange:update", detail)
+	a.emitPump.Enqueue("limitrange:update", func() any { return detail })
 }
 
 func (a *App) GetLimitRangeByName(namespace, name string) dto.LimitRangeDetail {
@@ -206,7 +205,7 @@ func (a *App) emitLimitRanges() {
 		log.Printf("app: emitLimitRanges: %v", err)
 		return
 	}
-	runtime.EventsEmit(a.ctx, "limitranges:update", data)
+	a.emitPump.Enqueue("limitranges:update", func() any { return data })
 }
 
 func (a *App) GetLimitRangeYAML(namespace, name string) (string, error) {

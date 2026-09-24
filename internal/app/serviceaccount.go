@@ -7,7 +7,6 @@ import (
 
 	kubeResources "github.com/galacius/galacius/internal/kube/resources"
 	"github.com/galacius/galacius/packages/core/kube/dto"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -97,7 +96,7 @@ func (a *App) emitServiceAccounts() {
 		log.Printf("app: emitServiceAccounts: %v", err)
 		return
 	}
-	runtime.EventsEmit(a.ctx, "serviceaccounts:update", data)
+	a.emitPump.Enqueue("serviceaccounts:update", func() any { return data })
 }
 
 func (a *App) GetServiceAccountYAML(namespace, name string) (string, error) {
@@ -174,5 +173,5 @@ func (a *App) emitServiceAccountDetail() {
 	if err != nil {
 		return
 	}
-	runtime.EventsEmit(a.ctx, "serviceaccount:update", detail)
+	a.emitPump.Enqueue("serviceaccount:update", func() any { return detail })
 }

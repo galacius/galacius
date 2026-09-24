@@ -7,7 +7,6 @@ import (
 
 	kubeResources "github.com/galacius/galacius/internal/kube/resources"
 	"github.com/galacius/galacius/packages/core/kube/dto"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -57,7 +56,7 @@ func (a *App) emitClusterRoleBindings() {
 		log.Printf("app: emitClusterRoleBindings: %v", err)
 		return
 	}
-	runtime.EventsEmit(a.ctx, "clusterrolebindings:update", data)
+	a.emitPump.Enqueue("clusterrolebindings:update", func() any { return data })
 }
 
 func (a *App) DeleteClusterRoleBinding(name string) error {
@@ -173,5 +172,5 @@ func (a *App) emitClusterRoleBindingDetail() {
 	if err != nil {
 		return
 	}
-	runtime.EventsEmit(a.ctx, "clusterrolebinding:update", detail)
+	a.emitPump.Enqueue("clusterrolebinding:update", func() any { return detail })
 }

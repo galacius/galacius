@@ -9,7 +9,6 @@ import (
 
 	kubeResources "github.com/galacius/galacius/internal/kube/resources"
 	"github.com/galacius/galacius/packages/core/kube/dto"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -171,7 +170,7 @@ func (a *App) emitDeployments() {
 		log.Printf("app: emitDeployments: %v", err)
 		return
 	}
-	runtime.EventsEmit(a.ctx, "deployments:update", data)
+	a.emitPump.Enqueue("deployments:update", func() any { return data })
 }
 
 func (a *App) GetDeploymentYAML(namespace, name string) (string, error) {
@@ -248,5 +247,5 @@ func (a *App) emitDeploymentDetail() {
 	if err != nil {
 		return
 	}
-	runtime.EventsEmit(a.ctx, "deployment:update", detail)
+	a.emitPump.Enqueue("deployment:update", func() any { return detail })
 }

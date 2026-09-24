@@ -7,7 +7,6 @@ import (
 
 	kubeResources "github.com/galacius/galacius/internal/kube/resources"
 	"github.com/galacius/galacius/packages/core/kube/dto"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -48,7 +47,7 @@ func (a *App) emitIngressDetail() {
 	if err != nil {
 		return
 	}
-	runtime.EventsEmit(a.ctx, "ingress:update", detail)
+	a.emitPump.Enqueue("ingress:update", func() any { return detail })
 }
 
 func (a *App) GetIngressByName(namespace, name string) (dto.IngressDetail, error) {
@@ -116,7 +115,7 @@ func (a *App) emitIngresses() {
 		log.Printf("app: emitIngresses: %v", err)
 		return
 	}
-	runtime.EventsEmit(a.ctx, "ingresses:update", data)
+	a.emitPump.Enqueue("ingresses:update", func() any { return data })
 }
 
 func (a *App) GetIngressYAML(namespace, name string) (string, error) {
