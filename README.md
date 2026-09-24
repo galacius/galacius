@@ -1,13 +1,26 @@
-# Galacius
+<p align="center">
+  <img src="frontend/src/assets/images/logo-universal.png" width="128" height="128" alt="Galacius">
+</p>
 
-[![homepage](https://img.shields.io/badge/🏘️-galacius.github.io-1abc9c)](https://galacius.github.io/)
-[![license](https://img.shields.io/github/license/galacius/galacius.svg)](LICENSE)
-[![release](https://img.shields.io/github/v/release/galacius/galacius?display_name=tag&sort=semver)](https://github.com/galacius/galacius/releases/latest)
+<h1 align="center">Galacius</h1>
 
-Galacius is a lightweight, native desktop dashboard for managing Kubernetes
-clusters. It's built with [Wails](https://wails.io) (Go backend + React
-webview, no Electron), so it stays small and fast while giving you a clean,
-modern watch-based UI over your cluster.
+<p align="center">
+  A lightweight, native desktop dashboard for Kubernetes clusters.<br>
+  Built with Wails — Go backend, React webview, no Electron.
+</p>
+
+<p align="center">
+  <a href="https://galacius.github.io/"><img src="https://img.shields.io/badge/🏘️-galacius.github.io-1abc9c" alt="homepage"></a>
+  <a href="https://unikorn.vn/p/galacius" target="_blank" rel="noopener noreferrer"><img alt="Galacius on Unikorn" src="https://img.shields.io/badge/Unikorn-galacius-6c5ce7"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/galacius/galacius.svg" alt="license"></a>
+  <a href="https://github.com/galacius/galacius/releases/latest"><img src="https://img.shields.io/github/v/release/galacius/galacius?display_name=tag&sort=semver" alt="release"></a>
+</p>
+
+<p align="center">
+  <a href="https://www.producthunt.com/products/galacius?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-galacius" target="_blank" rel="noopener noreferrer"><img alt="Galacius - A native desktop dashboard for Kubernetes | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1258934&amp;theme=light&amp;t=1790260418077"></a>
+</p>
+
+---
 
 https://github.com/user-attachments/assets/97f02acb-d5e5-488a-a65a-610a897c4130
 
