@@ -5,6 +5,9 @@ REPO="galacius/galacius"
 BIN_NAME="galacius"
 INSTALL_DIR="/usr/local/bin"
 DESKTOP_DIR="$HOME/.local/share/applications"
+# BIN_NAME/INSTALL_DIR are overridden below once PLATFORM_OS is known (see
+# "detect OS + arch") -- Windows (Git Bash/MSYS2/Cygwin) has neither an
+# /usr/local/bin nor an unsuffixed binary name.
 
 # Base URL for all release lookups (releases/latest, releases/tags/{tag},
 # releases/download/..., releases/assets/...). Mirrors GetReleasesBaseURL in
@@ -21,6 +24,19 @@ info()    { echo -e "${GREEN}→${NC} $*"; }
 warn()    { echo -e "${YELLOW}⚠${NC}  $*"; }
 error()   { echo -e "${RED}✗${NC}  $*" >&2; exit 1; }
 success() { echo -e "${GREEN}✓${NC} $*"; }
+
+# sha256sum (coreutils) is present on Linux and Git-for-Windows/MSYS2; macOS
+# has no coreutils by default and ships shasum instead -- prefer whichever is
+# actually available rather than assuming one.
+sha256_file() {
+  if command -v sha256sum &>/dev/null; then
+    sha256sum "$1" | awk '{print $1}'
+  elif command -v shasum &>/dev/null; then
+    shasum -a 256 "$1" | awk '{print $1}'
+  else
+    error "Neither sha256sum nor shasum found; cannot verify checksum."
+  fi
+}
 
 # ── jq availability check ────────────────────────────────────────────────────
 command -v jq &>/dev/null || error "jq is required but not installed. Install it and re-run."
@@ -43,10 +59,28 @@ case "$OS" in
       *)        error "Unsupported macOS architecture: $ARCH" ;;
     esac
     ;;
+  MINGW*|MSYS*|CYGWIN*)
+    # Git Bash/MSYS2/Cygwin report a MINGW64_NT-.../MSYS_NT-.../CYGWIN_NT-...
+    # kernel name via uname -s; only amd64 is in the build matrix (see
+    # .github/workflows/job-build.yml's build-windows job).
+    case "$ARCH" in
+      x86_64)  PLATFORM_OS="windows"; PLATFORM_ARCH="amd64" ;;
+      *)        error "Unsupported Windows architecture: $ARCH (only amd64 is currently published)" ;;
+    esac
+    ;;
   *)
-    error "Unsupported OS: $OS (Windows users: download the .exe from GitHub Releases)"
+    error "Unsupported OS: $OS"
     ;;
 esac
+
+if [[ "$PLATFORM_OS" == "windows" ]]; then
+  BIN_NAME="galacius.exe"
+  # $HOME is already the POSIX-style path Git Bash derives from %USERPROFILE%
+  # (e.g. /c/Users/you), so joining it here needs no cygpath conversion.
+  # Mirrors scripts/install.ps1's $env:LOCALAPPDATA\Programs\Galacius, so
+  # either installer recognizes (and backs up) the other's install.
+  INSTALL_DIR="$HOME/AppData/Local/Programs/Galacius"
+fi
 
 # ── auth ─────────────────────────────────────────────────────────────────────
 # For private repos, export GALACIUS_ACCESS_TOKEN and also point
@@ -260,7 +294,7 @@ fi
 # fail-closed behavior (refusing to install without a checksum) is enforced
 # where EXPECTED_SHA256 is read from the manifest.
 info "Verifying checksum..."
-ACTUAL_SHA256=$(shasum -a 256 "$TMP_DIR/$ARTIFACT" | awk '{print $1}')
+ACTUAL_SHA256=$(sha256_file "$TMP_DIR/$ARTIFACT")
 if [[ "$EXPECTED_SHA256" != "$ACTUAL_SHA256" ]]; then
   restore_backup
   error "Checksum mismatch for ${ARTIFACT}: expected ${EXPECTED_SHA256}, got ${ACTUAL_SHA256}"
@@ -273,6 +307,8 @@ if [[ "$HAVE_BACKUP" -eq 1 ]]; then
 fi
 
 # ── extract ──────────────────────────────────────────────────────────────────
+# The Windows artifact ships as a bare .exe (no archive), so neither case
+# matches and the downloaded file is already the binary.
 info "Extracting..."
 case "$ARTIFACT" in
   *.tar.gz) tar -xzf "$TMP_DIR/$ARTIFACT" -C "$TMP_DIR" ;;
@@ -297,6 +333,28 @@ if [[ "$OS" == "Darwin" ]]; then
 
   success "Galacius installed to $APP_DEST"
   echo "  Open from Applications or run: open /Applications/Galacius.app"
+
+elif [[ "$PLATFORM_OS" == "windows" ]]; then
+  info "Installing to $INSTALL_DIR/$BIN_NAME..."
+  mkdir -p "$INSTALL_DIR"
+
+  STAGED="$INSTALL_DIR/.$BIN_NAME.new"
+  cp "$TMP_DIR/$ARTIFACT" "$STAGED"
+  mv -f "$STAGED" "$INSTALL_DIR/$BIN_NAME"
+
+  # A PATH change here only reaches Git Bash sessions, not cmd.exe/PowerShell
+  # -- scripts/install.ps1 is the native Windows install that also wires up
+  # the system-wide user PATH and a Start Menu shortcut.
+  BASHRC="$HOME/.bashrc"
+  PATH_LINE="export PATH=\"$INSTALL_DIR:\$PATH\""
+  if [[ ! -f "$BASHRC" ]] || ! grep -qF "$PATH_LINE" "$BASHRC"; then
+    printf '\n# Added by galacius install.sh\n%s\n' "$PATH_LINE" >> "$BASHRC"
+    warn "Added $INSTALL_DIR to PATH in ~/.bashrc — restart Git Bash (or run: source ~/.bashrc) to use the 'galacius' command"
+  fi
+
+  success "Galacius $TAG installed to $INSTALL_DIR/$BIN_NAME"
+  echo "  Run from Git Bash: galacius"
+  echo "  For a full Windows install (Start Menu shortcut + system PATH), use scripts/install.ps1 instead"
 
 else
   BIN_SRC=$(find "$TMP_DIR" -name "$BIN_NAME" -type f | head -1)

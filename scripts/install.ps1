@@ -8,7 +8,7 @@
   internal/updater's unauthenticated path), download, verify, install.
 
   Usage:
-    irm https://raw.githubusercontent.com/galacius/galacius/main/scripts/install.ps1 | iex
+    irm https://raw.githubusercontent.com/galacius/galacius/master/scripts/install.ps1 | iex
     .\install.ps1 [version]
 
   For private repos, set GALACIUS_ACCESS_TOKEN and point

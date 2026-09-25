@@ -27,7 +27,7 @@ func getBoolEnvOrDefault(key string, defaultValue bool) bool {
 // GetInstallScriptURL returns the URL of the install script, allowing it to be
 // overridden via the INSTALL_SCRIPT_URL environment variable (primarily for testing).
 func GetInstallScriptURL() string {
-	return getEnvOrDefault("INSTALL_SCRIPT_URL", "https://raw.githubusercontent.com/galacius/galacius/main/scripts/install.sh")
+	return getEnvOrDefault("INSTALL_SCRIPT_URL", "https://raw.githubusercontent.com/galacius/galacius/master/scripts/install.sh")
 }
 
 // GetReleasesBaseURL returns the base URL for the repo's releases (not

@@ -1,5 +1,5 @@
 import { Divider, DonutChart, ResourceLink } from "@galacius/design-system";
-import { FC } from "react";
+import { FC, useMemo } from "react";
 import { useCatchForbiddenResources } from "../../shared/hooks/async-events/useCatchForbiddenResources";
 import { useMainLayoutContext } from "../MainLayoutContext";
 import { RESOURCE_LABEL, ViewType } from "../navConfig";
@@ -89,18 +89,39 @@ export const OverviewView: FC<OverviewViewProps> = ({ onNavigateToView }) => {
     namespaces,
   });
 
-  const totalPods =
-    podsSummary.Running +
-    podsSummary.Pending +
-    podsSummary.Failed +
-    podsSummary.Succeeded +
-    podsSummary.Evicted;
-  const totalDeployments = deploymentsSummary.Running + deploymentsSummary.Pending;
-  const totalDaemonSets = daemonSetsSummary.Running + daemonSetsSummary.Pending;
-  const totalStatefulSets = statefulSetsSummary.Running + statefulSetsSummary.Pending;
-  const totalReplicaSets = replicaSetsSummary.Running + replicaSetsSummary.Pending;
-  const totalJobs = jobsSummary.Succeeded + jobsSummary.Failed + jobsSummary.Pending;
-  const totalCronJobs = cronJobsSummary.Scheduled + cronJobsSummary.Suspended;
+  const totalPods = useMemo(
+    () =>
+      podsSummary.Running +
+      podsSummary.Pending +
+      podsSummary.Failed +
+      podsSummary.Succeeded +
+      podsSummary.Evicted,
+    [podsSummary]
+  );
+  const totalDeployments = useMemo(
+    () => deploymentsSummary.Running + deploymentsSummary.Pending,
+    [deploymentsSummary]
+  );
+  const totalDaemonSets = useMemo(
+    () => daemonSetsSummary.Running + daemonSetsSummary.Pending,
+    [daemonSetsSummary]
+  );
+  const totalStatefulSets = useMemo(
+    () => statefulSetsSummary.Running + statefulSetsSummary.Pending,
+    [statefulSetsSummary]
+  );
+  const totalReplicaSets = useMemo(
+    () => replicaSetsSummary.Running + replicaSetsSummary.Pending,
+    [replicaSetsSummary]
+  );
+  const totalJobs = useMemo(
+    () => jobsSummary.Succeeded + jobsSummary.Failed + jobsSummary.Pending,
+    [jobsSummary]
+  );
+  const totalCronJobs = useMemo(
+    () => cronJobsSummary.Scheduled + cronJobsSummary.Suspended,
+    [cronJobsSummary]
+  );
 
   return (
     <div className="flex h-full flex-col gap-6">
@@ -198,7 +219,7 @@ export const OverviewView: FC<OverviewViewProps> = ({ onNavigateToView }) => {
 
       <Divider />
 
-      <div className="flex min-h-0 flex-1 flex-col gap-3">
+      <div className="flex min-h-100 flex-1 flex-col gap-3">
         <span className="text-left text-sm font-medium">
           <ResourceLink onClick={() => onNavigateToView?.("events")}>
             Warning Events ({warningEvents.length})

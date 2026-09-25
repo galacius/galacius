@@ -26,7 +26,7 @@ https://github.com/user-attachments/assets/97f02acb-d5e5-488a-a65a-610a897c4130
 
 ## Installation
 
-For step-by-step installation instructions, see https://galacius.github.io/#installation
+See [docs/installation.md](docs/installation.md).
 
 ## Uninstallation
 
