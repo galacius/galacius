@@ -26,7 +26,7 @@ https://github.com/user-attachments/assets/97f02acb-d5e5-488a-a65a-610a897c4130
 
 ## Installation
 
-See [docs/installation.md](docs/installation.md), or https://galacius.github.io/#installation for Homebrew/APT.
+See [docs/installation.md](docs/installation.md).
 
 ## Uninstallation
 
