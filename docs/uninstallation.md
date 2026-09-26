@@ -21,13 +21,13 @@ sudo apt remove --purge galacius
 ### Manual (Linux + MacOS)
 
 ```sh
-curl -fsSL "https://raw.githubusercontent.com/galacius/galacius/main/scripts/uninstall.sh" | bash
+curl -fsSL "https://raw.githubusercontent.com/galacius/galacius/master/scripts/uninstall.sh" | bash
 ```
 
 This preserves `~/.galacius` (settings, installed plugins). To wipe it too:
 
 ```sh
-curl -fsSL "https://raw.githubusercontent.com/galacius/galacius/main/scripts/uninstall.sh" | bash -s -- cleanup
+curl -fsSL "https://raw.githubusercontent.com/galacius/galacius/master/scripts/uninstall.sh" | bash -s -- cleanup
 ```
 
 ### Manual (Windows)
