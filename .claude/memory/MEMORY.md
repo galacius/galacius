@@ -7,6 +7,7 @@
 - [Unified tray architecture](unified_tray_architecture.md) — built-in tray families (modification/pod) share one shell via discriminated union + registry; plugin-owned families merge in at runtime
 - [Modification tray architecture](modification_tray_architecture.md) — generic cross-resource bottom tray; how to add a new resource kind
 - [Detail drawer pattern](detail_drawer_pattern.md) — DetailDrawerContext + DetailBlock; full steps for adding a new drawer end-to-end
+- [macOS menu bar tray](macos_menu_bar_tray.md) — native NSStatusItem in top-right status bar; lifecycle, Objective-C patterns, design decisions, testing; separate from the unified app tray system
 - [go.work removal / packages/core replace](go_work_removal_todo.md) — no go.work file, but a bare `replace` for packages/core in go.mod is permanent by design (host+core ship as a pair, like @galacius/core workspace:*)
 - [Wails IPC call ordering](wails_ipc_call_ordering.md) — no ordering guarantee for rapid concurrent calls to the same bound method; fix with a frontend-generated monotonic seq, not a Go-side one; seed that counter from `Date.now()` so it survives FE-only reloads
 - [Plugin footer widget registry](plugin_footer_widget_registry.md) — `appWideAPI.registerFooterWidget` + `pluginFooterRegistry`/`AppFooter.tsx` rendering; reconciliation + ES-module-cache snapshot/restore on disable/re-enable; app-root `PluginEventListener` vs. cluster-scoped `PluginDisabledSubscriber` event-dispatch split with the `getHandlerFor` liveness guard

@@ -64,8 +64,9 @@ minikube addons enable metrics-server
 - **`internal/updater`** — self-update (checks GitHub releases, downloads, swaps binary); split into `authenticated_updater.go` (private repo, token-based) and `unauthenticated_updater.go` (public repo, driven by a `manifest.json` release artifact — the single source of truth for per-OS/arch download filenames + SHA256, see `manifest.go`).
 - **`internal/config`** — app config (`~/.galacius/settings.json`, via `internal/storage`).
 - **`internal/storage`** — resolves `~/.galacius`, the single on-disk directory for all persistent app data (settings, installed plugins). Leaf package (no internal deps); `internal/config` and `internal/app` both depend on it.
+- **`internal/tray`** — native macOS menu-bar status item (NSStatusItem), Darwin-only with no-op on other platforms. Leaf package with no imports of app, wails, config, or kube. Minimal cgo/Objective-C native layer (`tray_darwin.go`/`tray_darwin.m`, pattern identical to `internal/app/fullscreen_darwin.go/m`). Exposes `Start(handlers Handlers)` and `Stop()` called from `internal/app` lifecycle hooks, plus `Supported` const to gate behavior. Menu items: "Open Galacius", "Settings", "About Galacius", separator, "Quit App". Red X (close button) hides window and keeps app running (via `HideWindowOnClose: tray.Supported` in main.go); true quit via Cmd+Q, tray Quit menu item, or direct runtime.Quit calls. See `.claude/memory/macos_menu_bar_tray.md` for full rationale.
 
-**Package dependency direction** (no cycles): `packages/core/kube/dto` ← `kube/resources` ← `kube` ← `app`; `store` ← `config` ← `app`, `store` ← `app`. `packages/core/kube/dto` and `store` are the leaves.
+**Package dependency direction** (no cycles): `packages/core/kube/dto` ← `kube/resources` ← `kube` ← `app`; `store` ← `config` ← `app`, `store` ← `app`, `tray` ← `app`. `packages/core/kube/dto`, `store`, and `tray` are the leaves.
 
 ### Core backend patterns
 
