@@ -4,10 +4,6 @@ package tray
 
 const Supported = false
 
-func Start(h Handlers) error {
-	return nil
-}
+func Start(_ Handlers) {}
 
-func Stop() error {
-	return nil
-}
+func Stop() {}

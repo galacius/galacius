@@ -24,19 +24,16 @@ type Handlers struct {
 }
 
 var (
-	handlersOnce sync.Once
-	mu           sync.Mutex
-	handlers     Handlers
+	mu       sync.Mutex
+	handlers Handlers
 )
 
-// SetHandlers stores the handlers to be called by tray menu item clicks.
-// This is called once during app startup.
+// SetHandlers stores the handlers to be called by tray menu item clicks,
+// replacing any previously set.
 func SetHandlers(h Handlers) {
-	handlersOnce.Do(func() {
-		mu.Lock()
-		defer mu.Unlock()
-		handlers = h
-	})
+	mu.Lock()
+	defer mu.Unlock()
+	handlers = h
 }
 
 // dispatch maps a tag to a handler and invokes it asynchronously.

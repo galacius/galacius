@@ -28,6 +28,9 @@ static void addMenuItemToMenu(NSMenu *menu, NSString *title, int tag, GLCTrayTar
 }
 
 void GLCStartTray(const void* png, int len) {
+    // Copy now: the Go pointer is only valid for the duration of this call,
+    // but the block below runs later on the main queue.
+    NSData *iconData = [NSData dataWithBytes:png length:len];
     dispatch_async(dispatch_get_main_queue(), ^{
         // Idempotent: if already started, do nothing.
         if (statusItem != nil) {
@@ -39,7 +42,6 @@ void GLCStartTray(const void* png, int len) {
             statusItemWithLength:NSVariableStatusItemLength] retain];
 
         // Load icon from PNG data.
-        NSData *iconData = [NSData dataWithBytes:png length:len];
         NSImage *icon = [[NSImage alloc] initWithData:iconData];
         if (icon != nil) {
             [icon setTemplate:YES];

@@ -1,8 +1,6 @@
 package app
 
 import (
-	"log"
-
 	"github.com/galacius/galacius/internal/tray"
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -21,9 +19,7 @@ func (a *App) startTray() {
 		OnQuit:     a.Quit,
 	}
 
-	if err := tray.Start(handlers); err != nil {
-		log.Printf("failed to start tray: %v", err)
-	}
+	tray.Start(handlers)
 }
 
 // showMainWindow shows the main window. It is unexported (not auto-bound by Wails).

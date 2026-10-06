@@ -10,8 +10,8 @@
 </p>
 
 <p align="center">
-  <a href="https://galacius.github.io/"><img src="https://img.shields.io/badge/🏘️-galacius.github.io-1abc9c" alt="homepage"></a>
-  <a href="https://unikorn.vn/p/galacius" target="_blank" rel="noopener noreferrer"><img alt="Galacius on Unikorn" src="https://img.shields.io/badge/Unikorn-galacius-6c5ce7"></a>
+  <a href="https://galacius.github.io?utm_campaign=github"><img src="https://img.shields.io/badge/🏘️-galacius.github.io-1abc9c" alt="homepage"></a>
+  <a href="https://unikorn.vn/p/galacius?utm_campaign=github" target="_blank" rel="noopener noreferrer"><img alt="Galacius on Unikorn" src="https://img.shields.io/badge/Unikorn-galacius-6c5ce7"></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/galacius/galacius.svg" alt="license"></a>
   <a href="https://github.com/galacius/galacius/releases/latest"><img src="https://img.shields.io/github/v/release/galacius/galacius?display_name=tag&sort=semver" alt="release"></a>
 </p>

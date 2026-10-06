@@ -140,38 +140,23 @@ func TestDispatchReturnsBeforeHandlerFinishes(t *testing.T) {
 	}
 }
 
-func TestSupportedFalseOnNonDarwin(t *testing.T) {
-	// This test only runs on non-Darwin (build-tag test).
-	// On darwin, Supported should be true (checked by tray_test_darwin.go).
-	// On non-darwin, Supported is always false.
-	// The test file tray_test_other.go checks this.
-}
+func TestSetHandlersReplacesPrevious(t *testing.T) {
+	first := make(chan struct{}, 1)
+	second := make(chan struct{}, 1)
+	SetHandlers(Handlers{OnOpen: func() { first <- struct{}{} }})
+	SetHandlers(Handlers{OnOpen: func() { second <- struct{}{} }})
 
-func TestStartAndStopAreIdempotent(t *testing.T) {
-	// Verify that calling Start/Stop multiple times doesn't panic.
-	// On non-Darwin, these are no-ops so it's trivial.
-	// On Darwin, Start is idempotent (checked by tray_darwin.m).
+	dispatch(ItemOpen)
 
-	h := Handlers{
-		OnOpen: func() {},
+	select {
+	case <-second:
+	case <-time.After(time.Second):
+		t.Fatal("replacement handler not called")
 	}
-
-	// Multiple starts should be fine (idempotent).
-	if err := Start(h); err != nil {
-		t.Fatalf("first Start failed: %v", err)
-	}
-
-	// Once SetHandlers is called (by the first Start), subsequent calls
-	// to Start won't re-set handlers (due to sync.Once).
-	// This is correct behavior: handlers are set once at startup.
-
-	// Multiple stops should be fine.
-	if err := Stop(); err != nil {
-		t.Fatalf("first Stop failed: %v", err)
-	}
-
-	if err := Stop(); err != nil {
-		t.Fatalf("second Stop failed: %v", err)
+	select {
+	case <-first:
+		t.Fatal("stale handler was called")
+	default:
 	}
 }
 

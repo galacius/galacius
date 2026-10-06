@@ -219,9 +219,7 @@ func (a *App) DomReady(_ context.Context) {
 // directory has since changed.
 func (a *App) Shutdown(_ context.Context) {
 	// Stop macOS tray first (no-op on non-Darwin).
-	if err := tray.Stop(); err != nil {
-		log.Printf("tray stop failed: %v", err)
-	}
+	tray.Stop()
 
 	// Stop proxy managers next.
 	a.stopAllProxyManagers()
