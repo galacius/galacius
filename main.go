@@ -43,7 +43,7 @@ func main() {
 		Height:            768,
 		MinWidth:          900,
 		MinHeight:         600,
-		HideWindowOnClose: tray.Supported,
+		HideWindowOnClose: tray.Available(),
 		AssetServer: &assetserver.Options{
 			Assets:  assets,
 			Handler: buildAPIHandler(a),

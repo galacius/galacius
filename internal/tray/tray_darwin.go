@@ -18,7 +18,8 @@ import "C"
 //go:embed assets/trayTemplate.png
 var trayIconPNG []byte
 
-const Supported = true
+// Available reports whether a menu-bar status item can be shown (always, on macOS).
+func Available() bool { return true }
 
 // Start initializes the macOS menu-bar status item with the provided handlers.
 // It is idempotent: calling it multiple times is safe.

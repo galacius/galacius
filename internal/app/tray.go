@@ -5,10 +5,10 @@ import (
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-// startTray initializes the macOS menu-bar tray with handlers wired to app methods.
-// On non-Darwin platforms this is a no-op.
+// startTray initializes the menu-bar/system tray (macOS, Linux) with handlers wired to app methods.
+// It is a no-op where no tray is available.
 func (a *App) startTray() {
-	if !tray.Supported {
+	if !tray.Available() {
 		return
 	}
 

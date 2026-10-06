@@ -40,9 +40,14 @@ A **leaf package** with **zero dependencies** on app, wails, config, or kube.
   - `GLCStopTray()` — dispatch_async(main queue)
     - Remove statusItem from NSStatusBar, release statics
 
-- **`tray_other.go`** (`//go:build !darwin`)
-  - No-op `Start()` and `Stop()` for Linux/Windows
-  - Const `Supported = false`
+- **`tray_linux.go`** (`//go:build linux`, pure Go, no cgo)
+  - StatusNotifierItem over D-Bus via `fyne.io/systray` (`RunWithExternalLoop`, so it coexists with Wails' GTK loop)
+  - `Available()` = `org.kde.StatusNotifierWatcher` has an owner on the session bus (Pop!_OS/GNOME AppIndicator extension, KDE, COSMIC); otherwise false so the red X still quits
+  - White icon `assets/trayLinux.png` (64px; no template tinting on Linux, panels are dark); source `build/tray/trayLinux.svg`
+  - Library can only start once per process: `Start` is once-only, `Stop` ends it for good
+
+- **`tray_other.go`** (`//go:build !darwin && !linux`)
+  - No-op `Start()` and `Stop()`; `Available()` is false (Windows has no tray yet)
 
 - **`tray_test.go`**
   - Table-driven tests: dispatch calls right handler per tag (async via channels/WaitGroup)
@@ -70,12 +75,12 @@ A **leaf package** with **zero dependencies** on app, wails, config, or kube.
 ### Main app config: `main.go`
 
 ```go
-HideWindowOnClose: tray.Supported,  // true on darwin, false on linux/windows
+HideWindowOnClose: tray.Available(),  // macOS: true; Linux: true if a tray host is running; else false
 ```
 
 - On Darwin, red X (close button) hides window instead of quitting
 - Cmd+Q, tray "Quit App" item, or direct `runtime.Quit` calls still quit the app
-- On Linux/Windows, HideWindowOnClose is false, so red X quits as usual
+- On Linux it is true only when a tray host exists; on Windows it is false, so red X quits as usual
 
 ## Design decisions
 
@@ -113,7 +118,7 @@ The tray is independent of the Wails-managed app menu (in `main.go` buildMenu). 
 - ✅ Dispatch returns immediately (handler runs async)
 - ✅ Concurrent dispatch calls are safe (race detector passes)
 - ✅ Start/Stop are idempotent (no panic on repeat calls)
-- ✅ Supported=false on non-Darwin (build-tag test)
+- ✅ Available() true on darwin / false on unsupported OSes (build-tag tests); no panic on Linux
 
 All 11 tests pass with `-race`.
 
@@ -127,10 +132,10 @@ On macOS:
 - Click "Quit App" → app quits cleanly (tray.Stop called first)
 - Red X (close button) hides window; app continues running in tray
 
-On Linux/Windows:
-- `tray.Supported` is false
-- No tray code compiles or runs
-- `HideWindowOnClose` is false, red X quits normally
+On Linux (Pop!_OS / GNOME with AppIndicator): white ship icon appears in the top bar with the same 5-item menu; red X hides, Open/Quit behave as on macOS. Without a tray host, `Available()` is false and red X quits. Needs manual check on a real desktop.
+
+On Windows:
+- `tray.Available()` is false, `HideWindowOnClose` is false, red X quits normally
 
 ## Code patterns
 

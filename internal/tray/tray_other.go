@@ -1,8 +1,9 @@
-//go:build !darwin
+//go:build !darwin && !linux
 
 package tray
 
-const Supported = false
+// Available is false where no tray is implemented, so the window is never hidden on close.
+func Available() bool { return false }
 
 func Start(_ Handlers) {}
 
