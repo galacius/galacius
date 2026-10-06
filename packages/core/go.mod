@@ -1,6 +1,6 @@
 module github.com/galacius/galacius/packages/core
 
-go 1.27.0
+go 1.27.1
 
 require (
 	google.golang.org/grpc v1.84.0
