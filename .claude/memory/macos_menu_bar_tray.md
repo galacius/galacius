@@ -46,8 +46,10 @@ A **leaf package** with **zero dependencies** on app, wails, config, or kube.
   - White icon `assets/trayLinux.png` (64px; no template tinting on Linux, panels are dark); source `build/tray/trayLinux.svg`
   - Library can only start once per process: `Start` is once-only, `Stop` ends it for good
 
-- **`tray_other.go`** (`//go:build !darwin && !linux`)
-  - No-op `Start()` and `Stop()`; `Available()` is false (Windows has no tray yet)
+- **`tray_systray.go`** (`//go:build linux || windows`): shared `Start`/`Stop`/menu code over `fyne.io/systray`; per-OS files supply `trayIcon()`, `platformSetup()`, `Available()`.
+- **`tray_windows.go`** (`//go:build windows`): embeds `assets/trayWindows.ico` (multi-size ICO from `logo-universal.png`, colored since the taskbar may be light or dark; Windows requires .ico); `SetOnTapped` -> open window (left-click), right-click shows the menu; `Available()` always true. Wails' Windows `HideWindowOnClose` calls `WindowHide`, so the taskbar button disappears too.
+- **`tray_other.go`** (`//go:build !darwin && !linux && !windows`)
+  - No-op `Start()` and `Stop()`; `Available()` is false
 
 - **`tray_test.go`**
   - Table-driven tests: dispatch calls right handler per tag (async via channels/WaitGroup)
@@ -80,7 +82,7 @@ HideWindowOnClose: tray.Available(),  // macOS: true; Linux: true if a tray host
 
 - On Darwin, red X (close button) hides window instead of quitting
 - Cmd+Q, tray "Quit App" item, or direct `runtime.Quit` calls still quit the app
-- On Linux it is true only when a tray host exists; on Windows it is false, so red X quits as usual
+- On Linux it is true only when a tray host exists; on Windows it is always true; on other OSes false, so red X quits as usual
 
 ## Design decisions
 
@@ -134,8 +136,7 @@ On macOS:
 
 On Linux (Pop!_OS / GNOME with AppIndicator): white ship icon appears in the top bar with the same 5-item menu; red X hides, Open/Quit behave as on macOS. Without a tray host, `Available()` is false and red X quits. Needs manual check on a real desktop.
 
-On Windows:
-- `tray.Available()` is false, `HideWindowOnClose` is false, red X quits normally
+On Windows: colored ship icon in the notification area (may sit in the overflow ^ menu); right-click shows the menu, left-click opens the window; red X hides to tray; Quit App exits. Needs manual check on a real Windows machine.
 
 ## Code patterns
 
