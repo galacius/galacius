@@ -11,6 +11,7 @@ import (
 	"github.com/galacius/galacius/internal/config"
 	"github.com/galacius/galacius/internal/plugin"
 	"github.com/galacius/galacius/internal/storage"
+	"github.com/galacius/galacius/internal/tray"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/menu"
 	"github.com/wailsapp/wails/v2/pkg/menu/keys"
@@ -37,11 +38,12 @@ func main() {
 	bindList := []any{a}
 
 	err := wails.Run(&options.App{
-		Title:     "galacius",
-		Width:     1024,
-		Height:    768,
-		MinWidth:  900,
-		MinHeight: 600,
+		Title:             "galacius",
+		Width:             1024,
+		Height:            768,
+		MinWidth:          900,
+		MinHeight:         600,
+		HideWindowOnClose: tray.Available(),
 		AssetServer: &assetserver.Options{
 			Assets:  assets,
 			Handler: buildAPIHandler(a),

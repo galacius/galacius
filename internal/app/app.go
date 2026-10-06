@@ -13,6 +13,7 @@ import (
 	"github.com/galacius/galacius/internal/lib/emitpump"
 	"github.com/galacius/galacius/internal/plugin"
 	"github.com/galacius/galacius/internal/proxy"
+	"github.com/galacius/galacius/internal/tray"
 	"github.com/galacius/galacius/internal/updater"
 	"github.com/galacius/galacius/packages/core/kube/dto"
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
@@ -172,6 +173,9 @@ func (a *App) Startup(ctx context.Context) {
 	// must work before the user ever selects a cluster. Runs in the background
 	// since spawning + handshaking a subprocess is too slow to block Startup.
 	go a.launchInstalledPlugins()
+
+	// Initialize macOS menu-bar tray (no-op on non-Darwin).
+	a.startTray()
 }
 
 // runServer starts the plugin cluster context gRPC server. This is required
@@ -214,7 +218,10 @@ func (a *App) DomReady(_ context.Context) {
 // PluginLoader.Launch()'s stale-lock reuse path, even after the plugins
 // directory has since changed.
 func (a *App) Shutdown(_ context.Context) {
-	// Stop proxy managers first.
+	// Stop macOS tray first (no-op on non-Darwin).
+	tray.Stop()
+
+	// Stop proxy managers next.
 	a.stopAllProxyManagers()
 
 	// Kill plugin processes before stopping the gRPC server. Each plugin
