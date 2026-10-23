@@ -84,7 +84,7 @@
     "cross-env": "catalog:",
     "esbuild-visualizer": "catalog:",
     "jsdom": "catalog:",
-    "tsup": "^8.5.1",
+    "tsup": "^9.0.0",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }

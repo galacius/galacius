@@ -39,7 +39,7 @@
   "dependencies": {
     "@tailwindcss/cli": "^4.3.3",
     "esbuild-visualizer": "^0.7.0",
-    "tsup": "^8.5.1"
+    "tsup": "^9.0.0"
   },
   "devDependencies": {
     "@tanstack/react-query": "^5.104.5",
