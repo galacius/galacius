@@ -365,8 +365,8 @@ function TextareaCode({
           <CopyIcon className="h-3.5 w-3.5" />
         )}
       </Button>
-      <div className="flex">
-        <div className="border-r border-zinc-800 py-2 select-none">
+      <div className="flex overflow-auto">
+        <div className="sticky left-0 z-1 shrink-0 border-r border-zinc-800 bg-zinc-950 py-2 select-none">
           {lines.map((line, i) => (
             <div
               key={`${i}-${line}`}
@@ -378,7 +378,7 @@ function TextareaCode({
         </div>
 
         {disabled ? (
-          <div className="min-w-0 flex-1 overflow-x-auto">
+          <div className="flex-1">
             <pre className="flex flex-col py-2">
               {lines.map((line, i) => (
                 <span key={`${i}-${line}`} className="flex">
@@ -394,7 +394,7 @@ function TextareaCode({
             value={value}
             rows={lines.length}
             wrap="off"
-            className={cn(textareaVariants({ variant: "code" }))}
+            className={cn(textareaVariants({ variant: "code" }), "overflow-y-hidden")}
             {...props}
           />
         )}

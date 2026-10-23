@@ -281,3 +281,42 @@ describe("Textarea editable YAML mode", () => {
     expect(textarea?.getAttribute("wrap")).toBe("off");
   });
 });
+
+describe("Textarea code variant read-only (disabled) scroll structure", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("makes the shared row the scroll container for gutter and code column", () => {
+    const { container } = render(<Textarea variant="code" disabled value={"a: 1\nb: 2\nc: 3"} />);
+
+    const pre = container.querySelector("pre");
+    const codeColumn = pre?.parentElement as HTMLElement;
+    const row = codeColumn?.parentElement as HTMLElement;
+    const gutter = row?.firstElementChild as HTMLElement;
+
+    expect(gutter.parentElement).toBe(row);
+    expect(row.className).toContain("overflow-auto");
+    expect(gutter.className).toContain("sticky");
+    expect(gutter.className).toContain("left-0");
+    expect(gutter.className).toContain("bg-zinc-950");
+  });
+
+  it("does not give the code column its own overflow-x-auto", () => {
+    const { container } = render(<Textarea variant="code" disabled value={"a: 1\nb: 2"} />);
+
+    const codeColumn = container.querySelector("pre")?.parentElement as HTMLElement;
+    expect(codeColumn.className).not.toContain("overflow-x-auto");
+  });
+
+  it("keeps the copy button outside the scroll container", () => {
+    const { container } = render(<Textarea variant="code" disabled value={"a: 1\nb: 2"} />);
+
+    const copyButton = container.querySelector('button[aria-label="Copy value"]');
+    const row = container.querySelector("pre")?.parentElement?.parentElement as HTMLElement;
+
+    expect(copyButton).toBeInTheDocument();
+    expect(row.contains(copyButton)).toBe(false);
+    expect(row.className).toContain("overflow-auto");
+  });
+});
