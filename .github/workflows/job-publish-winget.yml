@@ -135,9 +135,8 @@ jobs:
           # was rejected for 1.12.0 and asked for 1.28.0), but wingetcreate
           # still stamps its own older version. Bump it here, along with the
           # `$schema` URL in each file's header comment. Also drop wingetcreate's
-          # "# Created using ..." line: it pushes the schema header to line 2,
-          # which `winget validate` flags (exit 40) and which the merged
-          # galacius manifests don't have.
+          # "# Created using ..." line so the schema header is on line 1, like
+          # the merged galacius manifests.
           for f in "$DIR"/*.yaml; do
             sed -i -E \
               -e '/^# Created using/d' \
@@ -148,10 +147,21 @@ jobs:
               || { echo "::error::ManifestVersion not set to $MANIFEST_VERSION in $f"; exit 1; }
           done
 
-          # Validate after the bump: validating wingetcreate's own 1.12.0 output
-          # exits 40 on the runner's winget ("schema header URL does not match
-          # the expected pattern"), so check the manifests we'll actually submit.
+          # Validate the manifests we'll actually submit. Exit 40 is winget's
+          # "succeeded with warning" (MANIFEST_VALIDATION_WARNING): the runner's
+          # winget flags the schema header URL against its own bundled schema
+          # `$id`, even for headers microsoft/winget-pkgs accepted (the merged
+          # 1.1.4 manifests carry the same one). Only treat real failures as fatal.
+          set +e
           winget validate --manifest "$DIR"
+          rc=$?
+          set -e
+          if [[ $rc -eq 40 ]]; then
+            echo "::warning::winget validate succeeded with warnings (exit 40)"
+          elif [[ $rc -ne 0 ]]; then
+            echo "::error::winget validate failed (exit $rc)"
+            exit $rc
+          fi
 
           echo "manifest_dir=$DIR" >> "$GITHUB_ENV"
 
