@@ -165,10 +165,46 @@ jobs:
 
           echo "manifest_dir=$DIR" >> "$GITHUB_ENV"
 
+      # Not `wingetcreate submit`: it re-validates with its own bundled (<=1.12.0)
+      # schemas and rejects the 1.28.0 schema header winget-pkgs now requires
+      # ("Manifest validation succeeded: False", then "Path does not exist").
+      # Mirror what it does instead: branch on the PAT user's fork, commit the
+      # three files, open the PR against upstream.
       - name: Submit to microsoft/winget-pkgs
         if: ${{ !inputs.dry_run }}
         env:
-          WINGET_CREATE_GITHUB_TOKEN: ${{ secrets.WINGET_PKGS_GITHUB_PAT }}
+          GH_TOKEN: ${{ secrets.WINGET_PKGS_GITHUB_PAT }}
         run: |
           set -euo pipefail
-          wingetcreate submit "${{ env.manifest_dir }}"
+          UPSTREAM=microsoft/winget-pkgs
+          VERSION="${{ env.version_no_v }}"
+          BRANCH="galacius.Galacius-$VERSION"
+          REPO_PATH="manifests/g/galacius/Galacius/$VERSION"
+
+          LOGIN=$(gh api user --jq .login)
+          gh repo fork "$UPSTREAM" --clone=false || true  # no-op if the fork exists
+          FORK="$LOGIN/winget-pkgs"
+          for _ in 1 2 3 4 5 6; do
+            gh api "repos/$FORK" --silent && break
+            sleep 5
+          done
+
+          # Branch off upstream master; fork networks share objects, so the
+          # fork's own (possibly stale) master doesn't matter.
+          BASE_SHA=$(gh api "repos/$UPSTREAM/commits/master" --jq .sha)
+          gh api "repos/$FORK/git/refs" -f ref="refs/heads/$BRANCH" -f sha="$BASE_SHA" --silent
+
+          for f in "${{ env.manifest_dir }}"/*.yaml; do
+            name=$(basename "$f")
+            gh api -X PUT "repos/$FORK/contents/$REPO_PATH/$name" \
+              -f message="New version: galacius.Galacius version $VERSION" \
+              -f branch="$BRANCH" \
+              -f content="$(base64 -w0 < "$f")" --silent
+          done
+
+          gh api "repos/$UPSTREAM/pulls" \
+            -f title="New version: galacius.Galacius version $VERSION" \
+            -f head="$LOGIN:$BRANCH" \
+            -f base=master \
+            -f body="Automated update of galacius.Galacius to $VERSION (https://github.com/${{ github.repository }}/releases/tag/${{ inputs.version }})." \
+            --jq .html_url
