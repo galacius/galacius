@@ -107,7 +107,7 @@ jobs:
           wingetcreate update galacius.Galacius \
             --urls "$URL" \
             --version "${{ env.version_no_v }}" \
-            --outputdir "$RUNNER_TEMP/winget-manifests"
+            --out "$RUNNER_TEMP/winget-manifests"
 
       - name: Validate manifests
         env:
