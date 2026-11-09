@@ -41,6 +41,10 @@ jobs:
           ARTIFACT=$(jq -r '.artifacts[] | select(.os == "windows" and .arch == "amd64") | .filename' "$MANIFEST")
           SHA256=$(jq -r '.artifacts[] | select(.os == "windows" and .arch == "amd64") | .sha256' "$MANIFEST")
 
+          # manifest.json stores the hash uppercase; normalize so every later
+          # comparison is case-consistent.
+          SHA256="${SHA256,,}"
+
           [[ -n "$ARTIFACT" && -n "$SHA256" ]] || { echo "::error::windows/amd64 entry missing from manifest"; exit 1; }
           [[ "$SHA256" =~ ^[a-fA-F0-9]{64}$ ]] || { echo "::error::malformed sha256 in manifest: $SHA256"; exit 1; }
 
@@ -57,9 +61,11 @@ jobs:
           DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/$VERSION/${{ env.artifact }}"
 
           curl -fsSL -o "$RUNNER_TEMP/artifact.exe" "$DOWNLOAD_URL"
-          COMPUTED=$(sha256sum "$RUNNER_TEMP/artifact.exe" | awk '{print $1}')
+          # Hash via stdin: given a Windows-style path (backslashes in
+          # $RUNNER_TEMP), Git Bash's sha256sum prefixes the digest with `\`.
+          COMPUTED=$(sha256sum < "$RUNNER_TEMP/artifact.exe" | awk '{print $1}')
 
-          [[ "${COMPUTED,,}" == "${{ env.sha256 }}" ]] || {
+          [[ "$COMPUTED" == "${{ env.sha256 }}" ]] || {
             echo "::error::sha256 mismatch — manifest: ${{ env.sha256 }}, downloaded: $COMPUTED"
             exit 1
           }
@@ -77,7 +83,7 @@ jobs:
             --pattern wingetcreate.exe \
             --dir "$RUNNER_TEMP/wingetcreate"
 
-          COMPUTED=$(sha256sum "$RUNNER_TEMP/wingetcreate/wingetcreate.exe" | awk '{print $1}')
+          COMPUTED=$(sha256sum < "$RUNNER_TEMP/wingetcreate/wingetcreate.exe" | awk '{print $1}')
           [[ "$COMPUTED" == "$WINGETCREATE_SHA256" ]] || {
             echo "::error::wingetcreate sha256 mismatch — expected: $WINGETCREATE_SHA256, got: $COMPUTED"
             exit 1
