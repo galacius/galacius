@@ -155,6 +155,10 @@ jobs:
           # `brew audit <path>` is disabled (arbitrary Ruby execution risk); audit
           # by name instead, via a local tap pointed at the checked-out tap repo.
           brew tap galacius/galacius "$PWD/tap_repo"
+
+          # Recent Homebrew refuses to load casks from third-party taps until
+          # they're trusted. Scope the trust to just this cask.
+          brew trust --cask galacius/galacius/galacius
           brew audit --cask --strict galacius/galacius/galacius
 
       - name: Commit and push to tap repository
