@@ -11,6 +11,11 @@ on:
       version:
         type: string
         required: true
+      dry_run:
+        description: "Generate and validate manifests but skip the final PR submission"
+        type: boolean
+        required: false
+        default: false
 
 jobs:
   publish-winget:
@@ -146,6 +151,7 @@ jobs:
           echo "manifest_dir=$DIR" >> "$GITHUB_ENV"
 
       - name: Submit to microsoft/winget-pkgs
+        if: ${{ !inputs.dry_run }}
         env:
           WINGET_CREATE_GITHUB_TOKEN: ${{ secrets.WINGET_PKGS_GITHUB_PAT }}
         run: |
