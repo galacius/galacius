@@ -11,6 +11,11 @@ on:
       version:
         type: string
         required: true
+      dry_run:
+        description: "Generate and validate manifests but skip the final PR submission"
+        type: boolean
+        required: false
+        default: false
 
 jobs:
   publish-winget:
@@ -107,7 +112,7 @@ jobs:
           wingetcreate update galacius.Galacius \
             --urls "$URL" \
             --version "${{ env.version_no_v }}" \
-            --outputdir "$RUNNER_TEMP/winget-manifests"
+            --out "$RUNNER_TEMP/winget-manifests"
 
       - name: Validate manifests
         env:
@@ -126,16 +131,15 @@ jobs:
           grep -qi "InstallerSha256: ${{ env.sha256 }}" "$DIR/galacius.Galacius.installer.yaml" \
             || { echo "::error::InstallerSha256 mismatch in installer manifest"; exit 1; }
 
-          # Validate while still at wingetcreate's own schema version: the
-          # runner's winget may predate ManifestVersion 1.28.0 and reject it.
-          winget validate --manifest "$DIR"
-
           # microsoft/winget-pkgs deprecates old manifest schemas (PR #440465
           # was rejected for 1.12.0 and asked for 1.28.0), but wingetcreate
           # still stamps its own older version. Bump it here, along with the
-          # `$schema` URL in each file's header comment.
+          # `$schema` URL in each file's header comment. Also drop wingetcreate's
+          # "# Created using ..." line so the schema header is on line 1, like
+          # the merged galacius manifests.
           for f in "$DIR"/*.yaml; do
             sed -i -E \
+              -e '/^# Created using/d' \
               -e "s/^ManifestVersion: .*/ManifestVersion: $MANIFEST_VERSION/" \
               -e "s#(winget-manifest\.[A-Za-z]+\.)[0-9]+\.[0-9]+\.[0-9]+(\.schema\.json)#\1$MANIFEST_VERSION\2#" \
               "$f"
@@ -143,9 +147,26 @@ jobs:
               || { echo "::error::ManifestVersion not set to $MANIFEST_VERSION in $f"; exit 1; }
           done
 
+          # Validate the manifests we'll actually submit. Exit 40 is winget's
+          # "succeeded with warning" (MANIFEST_VALIDATION_WARNING): the runner's
+          # winget flags the schema header URL against its own bundled schema
+          # `$id`, even for headers microsoft/winget-pkgs accepted (the merged
+          # 1.1.4 manifests carry the same one). Only treat real failures as fatal.
+          set +e
+          winget validate --manifest "$DIR"
+          rc=$?
+          set -e
+          if [[ $rc -eq 40 ]]; then
+            echo "::warning::winget validate succeeded with warnings (exit 40)"
+          elif [[ $rc -ne 0 ]]; then
+            echo "::error::winget validate failed (exit $rc)"
+            exit $rc
+          fi
+
           echo "manifest_dir=$DIR" >> "$GITHUB_ENV"
 
       - name: Submit to microsoft/winget-pkgs
+        if: ${{ !inputs.dry_run }}
         env:
           WINGET_CREATE_GITHUB_TOKEN: ${{ secrets.WINGET_PKGS_GITHUB_PAT }}
         run: |
