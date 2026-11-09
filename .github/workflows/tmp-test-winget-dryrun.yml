@@ -1,0 +1,17 @@
+name: TMP winget dry run
+
+on:
+  push:
+    branches:
+      - fix/winget-wingetcreate-out-flag
+    paths:
+      - .github/workflows/tmp-test-winget-dryrun.yml
+      - .github/workflows/job-publish-winget.yml
+
+jobs:
+  dry-run:
+    uses: ./.github/workflows/job-publish-winget.yml
+    secrets: inherit
+    with:
+      version: v1.3.1
+      dry_run: true
