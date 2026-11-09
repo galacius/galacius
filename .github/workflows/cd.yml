@@ -72,6 +72,19 @@ jobs:
     with:
       version: ${{ needs.release-version.outputs.tag_name }}
 
+  publish-winget:
+    name: Publish to Windows Package Manager
+    needs: [release-version, build]
+    # Only needs the Windows artifact and the manifest that references it.
+    # `always()` for the same reason as publish-homebrew above. Gated on
+    # WINGET_FIRST_SUBMISSION_COMPLETE: the job only runs `wingetcreate update`,
+    # which requires the package to already exist in microsoft/winget-pkgs.
+    if: ${{ always() && needs.build.outputs.windows_build_result == 'success' && needs.build.outputs.manifest_result == 'success' && needs.release-version.outputs.tag_name != 'dev' && vars.WINGET_FIRST_SUBMISSION_COMPLETE == 'true' }}
+    uses: ./.github/workflows/job-publish-winget.yml
+    secrets: inherit
+    with:
+      version: ${{ needs.release-version.outputs.tag_name }}
+
   publish-design-system:
     name: Publish Design System
     needs: [release-version]
