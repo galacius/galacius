@@ -75,6 +75,16 @@ Or download the binary directly from the [latest release](https://github.com/gal
 
 ## Windows
 
+### winget
+
+```powershell
+winget install galacius.Galacius
+```
+
+Windows SmartScreen may warn on first run because the binary isn't code-signed yet. Click **More info** → **Run anyway**.
+
+Upgrade with `winget upgrade galacius.Galacius` rather than the in-app updater, to keep winget's version record in sync.
+
 ### Manual
 
 #### PowerShell

@@ -9,14 +9,14 @@ require (
 	github.com/godbus/dbus/v5 v5.2.4
 	github.com/google/uuid v1.6.0
 	github.com/joho/godotenv v1.5.1
-	github.com/wailsapp/wails/v2 v2.17.0
+	github.com/wailsapp/wails/v2 v2.17.1
 	golang.org/x/mod v0.42.0
-	golang.org/x/sys v0.49.0
-	google.golang.org/grpc v1.84.0
-	k8s.io/api v0.37.1
-	k8s.io/apimachinery v0.37.1
-	k8s.io/client-go v0.37.1
-	k8s.io/metrics v0.37.1
+	golang.org/x/sys v0.50.0
+	google.golang.org/grpc v1.85.0
+	k8s.io/api v0.37.2
+	k8s.io/apimachinery v0.37.2
+	k8s.io/client-go v0.37.2
+	k8s.io/metrics v0.37.2
 	k8s.io/utils v0.0.0-20261023123148-ca04ba58ecab
 	sigs.k8s.io/yaml v1.6.0
 )
@@ -48,7 +48,7 @@ require (
 	github.com/emirpasic/gods v1.18.1 // indirect
 	github.com/flytam/filenamify v1.2.0 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
-	github.com/fxamacker/cbor/v2 v2.9.6 // indirect
+	github.com/fxamacker/cbor/v2 v2.10.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.16 // indirect
 	github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376 // indirect
 	github.com/go-git/go-billy/v5 v5.9.0 // indirect
@@ -83,7 +83,7 @@ require (
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/kevinburke/ssh_config v1.2.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
-	github.com/labstack/echo/v4 v4.16.2 // indirect
+	github.com/labstack/echo/v4 v4.16.3 // indirect
 	github.com/labstack/gommon v0.5.0 // indirect
 	github.com/leaanthony/clir v1.3.0 // indirect
 	github.com/leaanthony/debme v1.2.1 // indirect
@@ -115,7 +115,7 @@ require (
 	github.com/samber/lo v1.53.0 // indirect
 	github.com/sergi/go-diff v1.3.2-0.20230802210424-5b0b94c5c0d3 // indirect
 	github.com/skeema/knownhosts v1.3.1 // indirect
-	github.com/spf13/pflag v1.0.10 // indirect
+	github.com/spf13/pflag v1.1.0 // indirect
 	github.com/tc-hib/winres v0.3.1 // indirect
 	github.com/tidwall/gjson v1.14.2 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
@@ -130,22 +130,22 @@ require (
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/xanzy/ssh-agent v0.3.3 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
-	github.com/yuin/goldmark v1.7.4 // indirect
+	github.com/yuin/goldmark v1.7.17 // indirect
 	github.com/yuin/goldmark-emoji v1.0.3 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
-	go.yaml.in/yaml/v2 v2.4.4 // indirect
-	go.yaml.in/yaml/v3 v3.0.5 // indirect
+	go.yaml.in/yaml/v2 v2.4.5 // indirect
+	go.yaml.in/yaml/v3 v3.0.6 // indirect
 	golang.org/x/crypto v0.58.0 // indirect
 	golang.org/x/exp/typeparams v0.0.0-20231108232855-2478ac86f678 // indirect
 	golang.org/x/image v0.41.0 // indirect
-	golang.org/x/net v0.61.0 // indirect
-	golang.org/x/oauth2 v0.37.0 // indirect
+	golang.org/x/net v0.62.0 // indirect
+	golang.org/x/oauth2 v0.38.0 // indirect
 	golang.org/x/sync v0.24.0 // indirect
 	golang.org/x/term v0.47.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
 	golang.org/x/time v0.16.0 // indirect
 	golang.org/x/tools v0.51.0 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20261019180522-ce908d29299b // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20261104224025-d1e00e9f33ab // indirect
 	google.golang.org/grpc/cmd/protoc-gen-go-grpc v1.6.2 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
@@ -156,7 +156,7 @@ require (
 	howett.net/plist v1.0.2-0.20250314012144-ee69052608d9 // indirect
 	k8s.io/klog/v2 v2.140.0 // indirect
 	k8s.io/kube-openapi v0.0.0-20260721132016-d427ff9ee9ad // indirect
-	k8s.io/streaming v0.37.1 // indirect
+	k8s.io/streaming v0.37.2 // indirect
 	sigs.k8s.io/json v0.0.0-20260909141634-11ed52e25bc5 // indirect
 	sigs.k8s.io/randfill v1.0.0 // indirect
 	sigs.k8s.io/structured-merge-diff/v6 v6.4.2 // indirect

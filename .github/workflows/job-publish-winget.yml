@@ -1,0 +1,147 @@
+name: Publish to Windows Package Manager
+
+on:
+  workflow_call:
+    inputs:
+      RUNNER:
+        type: string
+        required: false
+        # wingetcreate is a Windows-only .NET tool, unlike the other publish jobs.
+        default: windows-latest
+      version:
+        type: string
+        required: true
+
+jobs:
+  publish-winget:
+    name: Publish to Windows Package Manager
+    runs-on: ${{ inputs.RUNNER }}
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Download and validate manifest.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION="${{ inputs.version }}"
+
+          mkdir -p manifest_dir
+          gh release download "$VERSION" \
+            --repo "${{ github.repository }}" \
+            --pattern "manifest.json" \
+            --dir manifest_dir
+
+          MANIFEST="manifest_dir/manifest.json"
+          jq empty "$MANIFEST"
+
+          ARTIFACT=$(jq -r '.artifacts[] | select(.os == "windows" and .arch == "amd64") | .filename' "$MANIFEST")
+          SHA256=$(jq -r '.artifacts[] | select(.os == "windows" and .arch == "amd64") | .sha256' "$MANIFEST")
+
+          [[ -n "$ARTIFACT" && -n "$SHA256" ]] || { echo "::error::windows/amd64 entry missing from manifest"; exit 1; }
+          [[ "$SHA256" =~ ^[a-fA-F0-9]{64}$ ]] || { echo "::error::malformed sha256 in manifest: $SHA256"; exit 1; }
+
+          {
+            echo "artifact=$ARTIFACT"
+            echo "sha256=$SHA256"
+            echo "version_no_v=${VERSION#v}"
+          } >> "$GITHUB_ENV"
+
+      - name: Verify artifact sha256 against downloaded binary
+        run: |
+          set -euo pipefail
+          VERSION="${{ inputs.version }}"
+          DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/$VERSION/${{ env.artifact }}"
+
+          curl -fsSL -o "$RUNNER_TEMP/artifact.exe" "$DOWNLOAD_URL"
+          COMPUTED=$(sha256sum "$RUNNER_TEMP/artifact.exe" | awk '{print $1}')
+
+          [[ "${COMPUTED,,}" == "${{ env.sha256 }}" ]] || {
+            echo "::error::sha256 mismatch — manifest: ${{ env.sha256 }}, downloaded: $COMPUTED"
+            exit 1
+          }
+
+      - name: Install wingetcreate
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WINGETCREATE_VERSION: v1.12.13.0
+          WINGETCREATE_SHA256: 24042bd37915805615e6cf969ac57c6439124c3fe85823327f5f3fb24bd9ffea
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/wingetcreate"
+          gh release download "$WINGETCREATE_VERSION" \
+            --repo microsoft/winget-create \
+            --pattern wingetcreate.exe \
+            --dir "$RUNNER_TEMP/wingetcreate"
+
+          COMPUTED=$(sha256sum "$RUNNER_TEMP/wingetcreate/wingetcreate.exe" | awk '{print $1}')
+          [[ "$COMPUTED" == "$WINGETCREATE_SHA256" ]] || {
+            echo "::error::wingetcreate sha256 mismatch — expected: $WINGETCREATE_SHA256, got: $COMPUTED"
+            exit 1
+          }
+          echo "$RUNNER_TEMP/wingetcreate" >> "$GITHUB_PATH"
+
+      # Generate and submit are separate steps: `wingetcreate update --submit`
+      # opens the PR straight through the GitHub API without leaving local
+      # files, so there'd be nothing to validate before it goes upstream.
+      - name: Generate manifests
+        env:
+          # Classic PAT (public_repo) — wingetcreate doesn't support fine-grained
+          # tokens (microsoft/winget-create#595). Read from the env var rather
+          # than --token, which the tool warns may get logged.
+          WINGET_CREATE_GITHUB_TOKEN: ${{ secrets.WINGET_PKGS_GITHUB_PAT }}
+        run: |
+          set -euo pipefail
+          VERSION="${{ inputs.version }}"
+          URL="https://github.com/${{ github.repository }}/releases/download/$VERSION/${{ env.artifact }}"
+
+          wingetcreate update galacius.Galacius \
+            --urls "$URL" \
+            --version "${{ env.version_no_v }}" \
+            --outputdir "$RUNNER_TEMP/winget-manifests"
+
+      - name: Validate manifests
+        env:
+          MANIFEST_VERSION: 1.28.0
+        run: |
+          set -euo pipefail
+          DIR="$RUNNER_TEMP/winget-manifests/manifests/g/galacius/Galacius/${{ env.version_no_v }}"
+          [[ -d "$DIR" ]] || { echo "::error::expected manifest dir missing: $DIR"; find "$RUNNER_TEMP/winget-manifests" -type f; exit 1; }
+
+          for f in galacius.Galacius.yaml galacius.Galacius.installer.yaml galacius.Galacius.locale.en-US.yaml; do
+            [[ -f "$DIR/$f" ]] || { echo "::error::missing manifest file: $f"; exit 1; }
+          done
+
+          grep -q "^PackageVersion: \"\?${{ env.version_no_v }}\"\?$" "$DIR/galacius.Galacius.installer.yaml" \
+            || { echo "::error::PackageVersion mismatch in installer manifest"; exit 1; }
+          grep -qi "InstallerSha256: ${{ env.sha256 }}" "$DIR/galacius.Galacius.installer.yaml" \
+            || { echo "::error::InstallerSha256 mismatch in installer manifest"; exit 1; }
+
+          # Validate while still at wingetcreate's own schema version: the
+          # runner's winget may predate ManifestVersion 1.28.0 and reject it.
+          winget validate --manifest "$DIR"
+
+          # microsoft/winget-pkgs deprecates old manifest schemas (PR #440465
+          # was rejected for 1.12.0 and asked for 1.28.0), but wingetcreate
+          # still stamps its own older version. Bump it here, along with the
+          # `$schema` URL in each file's header comment.
+          for f in "$DIR"/*.yaml; do
+            sed -i -E \
+              -e "s/^ManifestVersion: .*/ManifestVersion: $MANIFEST_VERSION/" \
+              -e "s#(winget-manifest\.[A-Za-z]+\.)[0-9]+\.[0-9]+\.[0-9]+(\.schema\.json)#\1$MANIFEST_VERSION\2#" \
+              "$f"
+            grep -q "^ManifestVersion: $MANIFEST_VERSION\$" "$f" \
+              || { echo "::error::ManifestVersion not set to $MANIFEST_VERSION in $f"; exit 1; }
+          done
+
+          echo "manifest_dir=$DIR" >> "$GITHUB_ENV"
+
+      - name: Submit to microsoft/winget-pkgs
+        env:
+          WINGET_CREATE_GITHUB_TOKEN: ${{ secrets.WINGET_PKGS_GITHUB_PAT }}
+        run: |
+          set -euo pipefail
+          wingetcreate submit "${{ env.manifest_dir }}"

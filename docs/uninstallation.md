@@ -30,6 +30,12 @@ This preserves `~/.galacius` (settings, installed plugins). To wipe it too:
 curl -fsSL "https://raw.githubusercontent.com/galacius/galacius/master/scripts/uninstall.sh" | bash -s -- cleanup
 ```
 
+### winget (Windows)
+
+```powershell
+winget uninstall galacius.Galacius
+```
+
 ### Manual (Windows)
 
 Installed via [`scripts/install.ps1`](../scripts/install.ps1)? Remove the binary, its Start Menu shortcut, and the PATH entry it added:
