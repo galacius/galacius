@@ -134,9 +134,13 @@ jobs:
           # microsoft/winget-pkgs deprecates old manifest schemas (PR #440465
           # was rejected for 1.12.0 and asked for 1.28.0), but wingetcreate
           # still stamps its own older version. Bump it here, along with the
-          # `$schema` URL in each file's header comment.
+          # `$schema` URL in each file's header comment. Also drop wingetcreate's
+          # "# Created using ..." line: it pushes the schema header to line 2,
+          # which `winget validate` flags (exit 40) and which the merged
+          # galacius manifests don't have.
           for f in "$DIR"/*.yaml; do
             sed -i -E \
+              -e '/^# Created using/d' \
               -e "s/^ManifestVersion: .*/ManifestVersion: $MANIFEST_VERSION/" \
               -e "s#(winget-manifest\.[A-Za-z]+\.)[0-9]+\.[0-9]+\.[0-9]+(\.schema\.json)#\1$MANIFEST_VERSION\2#" \
               "$f"
