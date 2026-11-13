@@ -44,6 +44,7 @@ type App struct {
 	appSizeBytes          int64         // cached at startup, read-only afterward
 	installSource         string        // set once during Startup; guarded by mu
 	installSourceReady    chan struct{} // closed once installSource has been detected; see GetInstallSource
+	pathResolved          chan struct{} // closed once the login-shell PATH is resolved or skipped; see Connect
 	settings              config.Settings
 	clients               map[string]*kubernetes.Clientset
 	factories             map[string]*kube.FactoryHandle
@@ -118,18 +119,24 @@ type App struct {
 // NewApp creates a new App application struct
 func NewApp(version string) *App {
 	s, _ := config.Load()
-	// resolveLoginShellPATH shells out to the user's login shell (up to a 5s
+	// resolveLoginShellPATH shells out to the user's login shell (up to a 10s
 	// timeout on macOS) and NewApp runs before wails.Run even starts, so doing
 	// this synchronously blocks the whole process before a window can appear.
-	// It's best-effort — Setenv is skipped on failure/timeout and the app keeps
-	// the original PATH — and only affects exec-credential-plugin lookups
-	// (aws/gcloud) during a later Connect(), which needs user interaction and
-	// so has ample time for this to finish first.
+	// It runs in the background instead; on failure/timeout the existing PATH
+	// plus common binary dirs is used. It affects the setup command and
+	// exec-credential-plugin lookups (aws/gcloud), so Connect() waits on
+	// pathResolved (closed when resolution finishes) before using them.
 	// Skipped in tests ("test" is the sentinel version every unit test passes
 	// to NewApp) — otherwise every test constructing an App piles up real
 	// subprocess spawns with no benefit, which is slow and flaky under load.
+	pathResolved := make(chan struct{})
 	if version != "test" {
-		go resolveLoginShellPATH(s.ShellPath)
+		go func() {
+			defer close(pathResolved)
+			resolveLoginShellPATH(s.ShellPath)
+		}()
+	} else {
+		close(pathResolved)
 	}
 	return &App{
 		version:            version,
@@ -148,6 +155,7 @@ func NewApp(version string) *App {
 		removingPluginIDs:  make(map[string]bool),
 		proxyManagers:      make(map[string]*proxy.Manager),
 		installSourceReady: make(chan struct{}),
+		pathResolved:       pathResolved,
 	}
 }
 
@@ -317,6 +325,20 @@ func (a *App) handleProxyLost(contextName, message string) {
 func (a *App) Connect(contextName string, seq int64) error {
 	if !a.tryClaimConnectSeq(seq) {
 		return nil
+	}
+
+	// A GUI-launched app starts with launchd's minimal PATH, so the setup command
+	// and exec credential plugins (e.g. aws) must wait for the login-shell PATH.
+	// Resolution is bounded by its own timeout (~11s worst case), so this wait is
+	// bounded too. A nil channel (an App built as a literal, not via NewApp) is
+	// treated as already resolved rather than blocking forever.
+	if a.pathResolved != nil {
+		select {
+		case <-a.pathResolved:
+		default:
+			a.emitConnectStatus(contextName, "Resolving shell environment...")
+			<-a.pathResolved
+		}
 	}
 
 	// Clear every plugin's cached activeContext/activeNamespaces before doing any

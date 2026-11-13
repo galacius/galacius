@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	goruntime "runtime"
 	"strings"
 	"time"
@@ -67,28 +68,63 @@ func resolveLoginShellPATH(shellPath string) {
 	if shell == "" {
 		shell = "/bin/zsh"
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	// Wrapped in markers: an interactive shell's rc files can print banners,
 	// update notices, or prompt-framework noise (e.g. oh-my-zsh, p10k) to
 	// stdout before running our -c command, which would otherwise corrupt a
 	// bare `echo $PATH` capture.
 	const marker = "__galacius_path__:"
-	out, err := exec.CommandContext(ctx, shell, "-i", "-l", "-c", "echo "+marker+"$PATH").Output()
-	if err != nil {
-		log.Printf("[env] login shell PATH resolution failed (shell: %q): %v", shell, err)
-		return
-	}
+	cmd := exec.CommandContext(ctx, shell, "-i", "-l", "-c", `echo "`+marker+`$PATH"`)
+	// Bounds how long Output waits on pipes a shell child may still hold open
+	// after the shell itself is killed on timeout.
+	cmd.WaitDelay = time.Second
+	out, err := cmd.Output()
+	// The marker is checked before err: a shell that exits non-zero after
+	// printing PATH (e.g. a failing rc-file command) still yields a usable PATH.
+	var resolved string
 	for line := range strings.SplitSeq(string(out), "\n") {
-		_, rest, found := strings.Cut(line, marker)
-		if !found {
+		if _, rest, found := strings.Cut(line, marker); found {
+			resolved = strings.TrimSpace(rest)
+			break
+		}
+	}
+	if err != nil {
+		log.Printf("[env] login shell PATH resolution exited with error (shell: %q): %v", shell, err)
+	}
+	if resolved != "" {
+		log.Printf("[env] PATH resolved from login shell %q", shell)
+	} else {
+		log.Printf("[env] login shell PATH resolution: marker not found in output (shell: %q)", shell)
+		resolved = os.Getenv("PATH")
+	}
+	os.Setenv("PATH", ensureCommonPATHDirs(resolved, os.Getenv("HOME"))) //nolint:errcheck
+}
+
+// ensureCommonPATHDirs appends the usual macOS binary locations (Homebrew,
+// /usr/local/bin, and the per-user ~/.local/bin and ~/bin) to path, skipping any
+// already present. It's the fallback for when the login shell can't be queried,
+// so exec credential plugins installed in those directories are still found.
+func ensureCommonPATHDirs(path, home string) string {
+	dirs := []string{"/opt/homebrew/bin", "/opt/homebrew/sbin", "/usr/local/bin"}
+	if home != "" {
+		dirs = append(dirs, filepath.Join(home, ".local", "bin"), filepath.Join(home, "bin"))
+	}
+	// Empty elements are dropped: on POSIX an empty PATH entry means the cwd.
+	var entries []string
+	present := make(map[string]bool)
+	for entry := range strings.SplitSeq(path, ":") {
+		if entry == "" {
 			continue
 		}
-		if path := strings.TrimSpace(rest); path != "" {
-			os.Setenv("PATH", path) //nolint:errcheck
-			log.Printf("[env] PATH resolved from login shell %q", shell)
-		}
-		return
+		entries = append(entries, entry)
+		present[entry] = true
 	}
-	log.Printf("[env] login shell PATH resolution: marker not found in output (shell: %q)", shell)
+	for _, dir := range dirs {
+		if !present[dir] {
+			entries = append(entries, dir)
+			present[dir] = true
+		}
+	}
+	return strings.Join(entries, ":")
 }
