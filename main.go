@@ -12,6 +12,8 @@ import (
 	"github.com/galacius/galacius/internal/plugin"
 	"github.com/galacius/galacius/internal/storage"
 	"github.com/galacius/galacius/internal/tray"
+	"github.com/galacius/galacius/internal/tray/restart_wait"
+	"github.com/galacius/galacius/internal/tray/single_instance"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/menu"
 	"github.com/wailsapp/wails/v2/pkg/menu/keys"
@@ -23,7 +25,23 @@ import (
 //go:embed all:frontend/dist
 var assets embed.FS
 
+// singleInstanceAppID is the reverse-DNS identity of the Wails single-instance lock, also used by the Linux D-Bus
+// preflight (singleinstance.ForwardToRunningInstance). Dev builds get a suffix so they don't collide with an installed release.
+const singleInstanceAppID = "io.github.gknguyen.galacius"
+
+// singleInstanceUniqueID returns the single-instance lock ID for the given app version.
+func singleInstanceUniqueID(version string) string {
+	if version == config.Dev {
+		return singleInstanceAppID + ".dev"
+	}
+	return singleInstanceAppID
+}
+
 func main() {
+	// Must run before the single-instance hand-off below: a RestartApp child waits for its parent to release the lock.
+	restartwait.WaitForRestartParent()
+	singleinstance.ForwardToRunningInstance(singleInstanceUniqueID(Version))
+
 	// Load .env if present — silently ignored when absent (e.g. production binary).
 	// Existing environment variables are never overwritten.
 	_ = godotenv.Load()
@@ -55,6 +73,10 @@ func main() {
 		OnDomReady:       a.DomReady,
 		OnShutdown:       a.Shutdown,
 		Bind:             bindList,
+		SingleInstanceLock: &options.SingleInstanceLock{
+			UniqueId:               singleInstanceUniqueID(Version),
+			OnSecondInstanceLaunch: app.SecondInstanceHandler(a),
+		},
 	})
 
 	if err != nil {

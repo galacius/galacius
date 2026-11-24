@@ -5,8 +5,10 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"strconv"
 
 	"github.com/galacius/galacius/internal/config"
+	"github.com/galacius/galacius/internal/tray/restart_wait"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -34,6 +36,7 @@ func (a *App) RestartApp() error {
 	cmd := exec.Command(exePath, os.Args[1:]...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+	cmd.Env = append(os.Environ(), restartwait.RestartParentPIDEnv+"="+strconv.Itoa(os.Getpid()))
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("relaunch app: %w", err)
 	}
